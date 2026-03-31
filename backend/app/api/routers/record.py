@@ -1,4 +1,5 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from app.api.deps import verify_token
 from app.schemas.record import RecordStartRequest, ChatRequest, ChatResponse
 import uuid
 
@@ -12,7 +13,7 @@ FIXED_OPENING = "我们是xx区公安分局刑警大队的民警（出示人民�
 FIXED_CLOSING = "你还有什么需要补充说明的吗？如果以上笔录核对无误，请仔细阅读后签名按手印。"
 
 @router.post("/start", summary="1. 开启新笔录 (播报开场固定内容)")
-async def start_record(req: RecordStartRequest):
+async def start_record(req: RecordStartRequest, token: str = Depends(verify_token)):
     # 随机生成一个简短的档案ID
     record_id = str(uuid.uuid4())[:6] 
     
@@ -38,7 +39,7 @@ async def start_record(req: RecordStartRequest):
     }
 
 @router.post("/chat", response_model=ChatResponse, summary="2. 核心对话流 (根据状态自动流转)")
-async def chat_with_ai(req: ChatRequest):
+async def chat_with_ai(req: ChatRequest, token: str = Depends(verify_token)):
     # 1. 去数据库查一下当前这个案件的状态
     record = MOCK_DB.get(req.record_id)
     if not record:
