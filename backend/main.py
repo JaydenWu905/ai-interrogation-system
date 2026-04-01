@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # 引入我们刚才写的业务路由
-from app.api.routers import record,user
+from app.api.routers import record,user,audio
 
 # 1. 实例化 FastAPI，这里的 title 和 description 会直接展示在接口文档的网页头上！
 app = FastAPI(
@@ -25,6 +25,7 @@ app.add_middleware(
 # 这样 record 里的接口就会加上 /api/v1 的前缀，比如 /api/v1/records/start
 app.include_router(record.router, prefix="/api/v1")
 app.include_router(user.router, prefix="/api/v1")
+app.include_router(audio.router, prefix="/api/v1")
 
 # 4. 系统健康检查接口（用来确认后端活没活着）
 @app.get("/health", tags=["系统服务"])
