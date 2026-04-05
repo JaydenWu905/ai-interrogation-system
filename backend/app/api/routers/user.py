@@ -1,40 +1,45 @@
-from fastapi import APIRouter, HTTPException
-from app.schemas.user import LoginRequest, LoginResponse, UserInfo
+from fastapi import APIRouter, HTTPException,Depends
+from sqlmodel import Session, select
 
+# 引入契约（用于校验输入输出）
+from app.schemas.user import LoginRequest, LoginResponse, UserInfo
+# 引入数据库模型和连接工具
+from app.models import User
+from app.database import get_session
 router = APIRouter(prefix="/auth", tags=["权限与登录模块"])
 
-# 【临时模拟】假装这是你的 SQLite 数据库里的用户表
-MOCK_USER_DB = {
-    "PC123456": {
-        "password": "123456",  # 实际开发中密码绝对不能明文存储，这里仅做演示！
-        "name": "张警官",
-        "department": "刑侦大队"
-    }
-}
-
 @router.post("/login", response_model=LoginResponse, summary="警员登录接口")
-async def login(req: LoginRequest):
-    user_record = MOCK_USER_DB.get(req.police_number)
+async def login(
+    req: LoginRequest, 
+    session: Session = Depends(get_session)  # <--- 挂上数据库连接的“依赖”
+):
+    """
+    警员登录：去真实的 SQLite 数据库中核对警号和密码
+    """
+    # 1. 拿着前端传来的警号，去真实数据库里捞人！
+    # 这行代码等同于 SQL 语句: SELECT * FROM user WHERE police_number = 'PC123456'
+    statement = select(User).where(User.police_number == req.police_number)
+    db_user = session.exec(statement).first() #这行代码会返回一个 User 对象，或者 None(没这个人)
     
-    if not user_record or user_record["password"] != req.password:
+    # 2. 查无此人，或者密码对不上
+    if not db_user or db_user.password != req.password:
         raise HTTPException(status_code=401, detail="警号或密码错误，请重试！")
     
-    # 【新增核心逻辑】：判断是否勾选了“记住我”
+    # 3. 登录成功，签发 Token (这部分“记住我”的逻辑完全不用动)
     if req.remember_me:
-        # 勾选了：有效期 3 天 (3天 * 24小时 * 60分 * 60秒 = 259200秒)
         expire_seconds = 3 * 24 * 60 * 60
         fake_token = f"token_for_{req.police_number}_3days"
     else:
-        # 没勾选：默认有效期 2 小时 (2小时 * 60分 * 60秒 = 7200秒)
         expire_seconds = 2 * 60 * 60
         fake_token = f"token_for_{req.police_number}_2hours"
     
+    # 4. 把从数据库里捞出来的真实姓名和部门，打包返回给前端
     return LoginResponse(
         token=fake_token,
-        expires_in=expire_seconds, # 把过期时间告诉前端
+        expires_in=expire_seconds,
         user=UserInfo(
-            police_number=req.police_number,
-            name=user_record["name"],
-            department=user_record["department"]
+            police_number=db_user.police_number,
+            name=db_user.name,              # <--- 直接读取数据库对象的属性
+            department=db_user.department   # <--- 直接读取数据库对象的属性
         )
     )
