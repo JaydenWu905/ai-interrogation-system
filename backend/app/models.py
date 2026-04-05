@@ -16,5 +16,10 @@ class Record(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     police_number: str = Field(index=True, description="是谁建立的这份笔录")
     title: str = Field(default="未命名笔录", description="笔录标题")
-    content: str = Field(default="", description="笔录转写出来的完整内容")
+    content: str = Field(default="", description="笔录的完整聊天记录")
+    status: str = Field(default="等待权利义务确认", description="当前案件状态")
+    extracted_info: str = Field(
+        default='{"案情": "", "发生时间": "", "发生地点": "", "嫌疑人信息": ""}', 
+        description="提取的结构化信息 (JSON字符串格式)"
+    )
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
