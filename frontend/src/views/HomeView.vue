@@ -1,14 +1,78 @@
 <template>
-  <div class="home">
-    <div class="card">
-      <h1 class="title">笔录系统</h1>
+  <div class="container">
 
-      <div class="time">{{ time }}</div>
+    <!-- 顶部栏 -->
+    <div class="header">
+      <div class="logo">
+        🛡️ 执法业务协同平台
+        <span class="sub">Law Enforcement Case Management System</span>
+      </div>
 
-      <button class="btn" @click="goLogin">
-        进入登录
-      </button>
+      <div class="user">
+        当前用户：{{ user?.name || "未登录" }}
+
+        <div class="avatar">{{ user?.name?.[0] || "?" }}</div>
+
+  <!-- 未登录 -->
+        <button v-if="!user" class="login-btn" @click="goLogin">
+        登录</button>
+
+  <!-- 已登录 -->
+        <button v-else class="logout" @click="logout">
+        退出</button>
+      </div>
     </div>
+
+    <!-- 主体 -->
+    <div class="main">
+
+      <!-- 左侧功能 -->
+      <div class="left">
+        <div class="grid">
+          <div class="box">讯</div>
+          <div class="box">询</div>
+          <div class="box">录</div>
+          <div class="box">案</div>
+        </div>
+
+        <div class="labels">
+          <span>快速讯问</span>
+          <span>快速询问</span>
+          <span>常规笔录</span>
+          <span>案件管理</span>
+        </div>
+      </div>
+
+      <!-- 右侧面板 -->
+      <div class="right">
+        <div class="panel">
+
+          <div class="time">{{ time }}</div>
+
+          <div class="list">
+            <div class="item">
+              <div>
+                <span class="tag blue">讯问</span>
+                关于张某某涉嫌某案件调查
+              </div>
+              <button class="enter">进入笔录</button>
+            </div>
+
+            <div class="item">
+              <div>
+                <span class="tag green">询问</span>
+                证人李某背景核查询问
+              </div>
+              <button class="enter">进入笔录</button>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
   </div>
 </template>
 
@@ -18,6 +82,14 @@ import { useRouter } from "vue-router"
 
 const router = useRouter()
 const time = ref("")
+const user = ref<any>(null)
+
+onMounted(() => {
+  const u = localStorage.getItem("user")
+  if (u) {
+    user.value = JSON.parse(u)
+  }
+})
 
 let timer: any = null
 
@@ -35,57 +107,207 @@ onUnmounted(() => {
   clearInterval(timer)
 })
 
+const logout = () => {
+  localStorage.removeItem("token")
+  localStorage.removeItem("user")
+  user.value = null
+}
+
 const goLogin = () => {
   router.push("/login")
 }
 </script>
 
+
+
 <style scoped>
-.home {
+.container {
   height: 100vh;
+  width: 100vw;
+
+  background: #f5f7fb;
+
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* 顶部 */
+.header {
+  flex-shrink: 0;
+
+  display: flex;
+  justify-content: space-between;
   align-items: center;
 
-  background: linear-gradient(135deg, #e6f0ff, #ffffff);
-}
-
-.card {
-  width: 400px;
-  padding: 40px;
-  border-radius: 20px;
-  text-align: center;
-
   background: white;
-  box-shadow: 0 10px 30px rgba(0, 100, 255, 0.1);
+  padding: 20px 30px;
+  border-radius: 16px;
+
+  box-shadow: 0 5px 20px rgba(0,0,0,0.05);
 }
 
-.title {
-  font-size: 32px;
+.logo {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.sub {
+  display: block;
+  font-size: 12px;
+  color: #888;
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #2f6bff;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logout {
+  padding: 6px 12px;
+  border: none;
+  background: #eee;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 主体 */
+.main {
+  flex: 1;
+
+  display: flex;
+  gap: 20px;
+
+  margin-top: 20px;
+
+  min-height: 0; /* 关键防止溢出 */
+}
+
+/* 左侧 */
+.left {
+  width: 320px;
+  flex-shrink:0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.box {
+  height: 120px;
+  border: 2px solid #2f6bff;
+  border-radius: 16px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 40px;
   color: #2f6bff;
-  margin-bottom: 20px;
 }
 
-.time {
-  font-size: 18px;
-  margin-bottom: 30px;
+.labels {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  margin-top: 10px;
+  text-align: center;
   color: #555;
 }
 
-.btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 10px;
-
-  background: #2f6bff;
-  color: white;
-  font-size: 16px;
-  cursor: pointer;
-
-  transition: 0.2s;
+/* 右侧 */
+.right {
+  flex: 1;
+  min-width:0;
 }
 
-.btn:hover {
-  background: #1d4ed8;
+.panel {
+  height: 100%;
+
+  background: white;
+  border-radius: 16px;
+  padding: 20px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.time {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 15px;
+  border-radius: 10px;
+  background: #f7f9fc;
+  margin-bottom: 10px;
+}
+
+.tag {
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-right: 10px;
+}
+
+.blue {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.green {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.enter {
+  background: #2f6bff;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.login-btn {
+  padding: 6px 12px;
+  border: none;
+  background: #2f6bff;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.logout {
+  padding: 6px 12px;
+  border: none;
+  background: #eee;
+  border-radius: 6px;
+  cursor: pointer;
 }
 </style>

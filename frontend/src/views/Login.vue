@@ -1,18 +1,26 @@
 <template>
   <div class="login">
+
+    <!-- 背景 -->
+    <div class="bg"></div>
+
+    <!-- 居中卡片 -->
     <div class="card">
-      <h2>警员登录</h2>
+      <h2 class="title">警员登录</h2>
 
       <input v-model="policeNumber" placeholder="警员编号" />
       <input v-model="password" type="password" placeholder="密码" />
 
-      <label>
-        <input type="checkbox" v-model="remember" />
-        记住我
-      </label>
+      <div class="options">
+        <label>
+          <input type="checkbox" v-model="remember" />
+          记住我
+        </label>
+      </div>
 
       <button @click="handleLogin">登录</button>
     </div>
+
   </div>
 </template>
 
@@ -35,24 +43,13 @@ const handleLogin = async () => {
       remember_me: remember.value,
     })
 
-    console.log("登录成功返回：", res)
-
-    // ✅ 存 token
     localStorage.setItem("token", res.token)
-
-    // ✅ 存用户信息（建议）
     localStorage.setItem("user", JSON.stringify(res.user))
-
-    alert("登录成功")
 
     router.push("/")
   } catch (err: any) {
-    console.error("完整错误：", err)
-    console.log("后端返回：", err?.response)
-
     const msg =
       err?.response?.data?.detail?.[0]?.msg || "登录失败"
-
     alert(msg)
   }
 }
@@ -60,18 +57,89 @@ const handleLogin = async () => {
 
 <style scoped>
 .login {
+  width: 100vw;
   height: 100vh;
+  position: relative;
+
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #f0f4ff;
 }
 
+/* 背景（柔和一点） */
+.bg {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #e6f0ff, #f8fbff);
+}
+
+/* 卡片 */
 .card {
-  width: 320px;
-  padding: 30px;
-  border-radius: 15px;
+  position: relative;
+  z-index: 1;
+
+  width: 360px;
+  padding: 40px;
+
   background: white;
-  box-shadow: 0 10px 30px rgba(0, 0, 255, 0.1);
+  border-radius: 16px;
+
+  box-shadow: 0 20px 50px rgba(0, 80, 255, 0.15);
+
+  display: flex;
+  flex-direction: column;
+}
+
+/* 标题 */
+.title {
+  text-align: center;
+  font-size: 24px;
+  color: #2f6bff;
+  margin-bottom: 25px;
+}
+
+/* 输入框 */
+.card input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+
+  border-radius: 8px;
+  border: 1px solid #ddd;
+
+  transition: 0.2s;
+}
+
+.card input:focus {
+  border-color: #2f6bff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(47,107,255,0.1);
+}
+
+/* 选项 */
+.options {
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #555;
+}
+
+/* 按钮 */
+.card button {
+  padding: 12px;
+
+  border: none;
+  border-radius: 8px;
+
+  background: #2f6bff;
+  color: white;
+  font-size: 16px;
+
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.card button:hover {
+  background: #1d4ed8;
 }
 </style>

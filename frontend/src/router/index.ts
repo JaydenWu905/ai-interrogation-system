@@ -19,4 +19,28 @@ const router = createRouter({
   routes,
 })
 
+router.beforeEach((to, from, next) => {
+  next()
+})
+// router.beforeEach((to, from, next) => {
+//   const token = localStorage.getItem("token")
+
+//   //  未登录
+//   if (!token) {
+//     if (to.path !== "/login") {
+//       next("/login")
+//     } else {
+//       next()
+//     }
+//   }
+//   //  已登录
+//   else {
+//     if (to.path === "/login") {
+//       next("/") // 已登录不能进登录页
+//     } else {
+//       next()
+//     }
+//   }
+// })
+
 export default router
