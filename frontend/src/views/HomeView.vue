@@ -29,16 +29,30 @@
       <!-- 左侧功能 -->
       <div class="left">
         <div class="grid">
-          <div class="box">讯</div>
-          <div class="box">询</div>
-          <div class="box">录</div>
-          <div class="box">案</div>
+          <div class="box" @click="openModal">讯</div>
         </div>
-
         <div class="labels">
           <span>快速讯问</span>
+        </div>
+
+        <div class="grid">
+          <div class="box" @click="openModal">询</div>
+        </div>
+        <div class="labels">
           <span>快速询问</span>
+        </div>
+
+        <div class="grid">
+          <div class="box" @click="openModal">录</div>
+        </div>
+        <div class="labels">
           <span>常规笔录</span>
+        </div>
+
+        <div class="grid">
+          <div class="box" @click="openModal">案</div>
+        </div>
+        <div class="labels">
           <span>案件管理</span>
         </div>
       </div>
@@ -53,9 +67,9 @@
             <div class="item">
               <div>
                 <span class="tag blue">讯问</span>
-                关于张某某涉嫌某案件调查
+                关于某涉嫌某案件调查
               </div>
-              <button class="enter">进入笔录</button>
+              <button class="enter" @click="openModal">进入笔录</button>
             </div>
 
             <div class="item">
@@ -63,7 +77,7 @@
                 <span class="tag green">询问</span>
                 证人李某背景核查询问
               </div>
-              <button class="enter">进入笔录</button>
+              <button class="enter" @click="openModal">进入笔录</button>
             </div>
 
           </div>
@@ -74,15 +88,26 @@
     </div>
 
   </div>
+  <RecordModal v-if="showModal" @close="closeModal" />
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue"
 import { useRouter } from "vue-router"
+import RecordModal from "@/components/RecordModal.vue"
 
 const router = useRouter()
 const time = ref("")
 const user = ref<any>(null)
+const showModal = ref(false)
+
+const openModal = () => {
+  showModal.value = true
+}
+
+const closeModal = () => {
+  showModal.value = false
+}
 
 onMounted(() => {
   const u = localStorage.getItem("user")
@@ -164,6 +189,7 @@ const goLogin = () => {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding-right: 30px;
 }
 
 .avatar {
@@ -206,6 +232,7 @@ const goLogin = () => {
 .left {
   width: 320px;
   flex-shrink:0;
+  padding:15px;
 }
 
 .grid {
@@ -239,6 +266,7 @@ const goLogin = () => {
 .right {
   flex: 1;
   min-width:0;
+  padding-right: 30px;
 }
 
 .panel {

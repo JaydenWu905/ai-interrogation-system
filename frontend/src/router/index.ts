@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 
 const HomeView = () => import('@/views/HomeView.vue')
 const LoginView = () => import('@/views/Login.vue')
+const RecordView =() => import('@/views/RecordView.vue')
 
 const routes = [
   {
@@ -11,6 +12,10 @@ const routes = [
   {
     path: '/login',
     component: LoginView,
+  },
+  {
+    path: '/record',
+    component: RecordView,
   },
 ]
 
@@ -22,6 +27,7 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   next()
 })
+
 // router.beforeEach((to, from, next) => {
 //   const token = localStorage.getItem("token")
 
@@ -42,5 +48,6 @@ router.beforeEach((to, from, next) => {
 //     }
 //   }
 // })
+
 
 export default router
