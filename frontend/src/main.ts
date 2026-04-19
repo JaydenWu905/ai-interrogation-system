@@ -1,16 +1,15 @@
-import { createApp } from 'vue'
-import './style.css'
-import App from './App.vue'
-import router from './router'
-import { pinia } from './stores'
+import { createApp } from "vue"
+import App from "./App.vue"
+import router from "./router"
+import { pinia } from "./stores"
+import "./style.css"
 
-createApp(App).mount('#app').$nextTick(() => {
-  // Use contextBridge
-  window.ipcRenderer.on('main-process-message', (_event, message) => {
-    console.log(message)
-  })
+const app = createApp(App)
+
+app.use(pinia)
+app.use(router)
+app.mount("#app")
+
+window.ipcRenderer.on("main-process-message", (_event, message) => {
+  console.log(message)
 })
-
-createApp(App).use(router).mount('#app')
-
-createApp(App).use(pinia).use(router).mount('#app')
