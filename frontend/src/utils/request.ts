@@ -12,7 +12,7 @@ service.interceptors.request.use((config) => {
   if (token) {
     // ⚠️ 确保 headers 存在
     config.headers = config.headers || {}
-    config.headers.Authorization = `Bearer ${token}`
+    config.headers.x_token = token
   }
 
   return config

@@ -41,11 +41,28 @@
 
           <div class="chat-list">
             <article v-for="(item, index) in chatList" :key="index" class="chat-item">
-              <div class="chat-role">问</div>
-              <div class="chat-content">{{ item.q }}</div>
-              <div class="chat-role answer">答</div>
-              <div class="chat-content answer">{{ item.a }}</div>
+              <div class="chat-role">{{ item.role === 'ai' ? 'AI' : '问' }}</div>
+              <div class="chat-content">{{ item.content }}</div>
             </article>
+          </div>
+
+          <div class="recording-section">
+            <div class="recording-input">
+              <textarea v-model="reporterInput" placeholder="请输入或点击录音按钮进行语音输入..." :disabled="isProcessing"></textarea>
+              <button 
+                class="record-btn" 
+                :class="{ 'recording': isRecording }" 
+                @click="toggleRecording"
+                :disabled="isProcessing"
+              >
+                {{ isRecording ? '停止录音' : '开始录音' }}
+              </button>
+            </div>
+            <div class="input-actions">
+              <button class="soft-btn" @click="sendMessage" :disabled="isProcessing || !reporterInput.trim()">
+                {{ isProcessing ? '处理中...' : '发送' }}
+              </button>
+            </div>
           </div>
         </section>
 
@@ -107,8 +124,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue"
+import { ref, onMounted } from "vue"
 import { useRoute } from "vue-router"
+import { startRecord, chatWithAI, speechToText } from "@/api/record"
 
 const route = useRoute()
 
@@ -130,13 +148,132 @@ const recordText = ref(`
 此区域可继续接入语音转写或 AI 自动整理后的笔录内容。
 `.trim())
 
-const chatList = ref([
-  { q: "请先介绍一下你的基本情况。", a: "我今年 30 岁，目前在本地单位工作。" },
-  { q: "案发当时你在什么位置？", a: "当时我在家中，之后接到通知才赶到现场。" },
-  { q: "是否还有其他目击人员？", a: "有两位同事知道当时的情况，可以进一步联系核实。" },
-])
+// 对话列表，修改为更适合AI对话的结构
+const chatList = ref<Array<{ role: 'ai' | 'user', content: string }>>([])
 
 const analysis = ref("系统将根据对话内容自动生成案件要素摘要，并辅助提示待补全的信息字段。")
+
+// 录音相关状态
+const isRecording = ref(false)
+const mediaRecorder = ref<MediaRecorder | null>(null)
+const audioChunks = ref<Blob[]>([])
+const reporterInput = ref("")
+const recordId = ref("")
+const isProcessing = ref(false)
+
+// 初始化笔录
+const initRecord = async () => {
+  try {
+    const response = await startRecord({
+      reporter_name: formData.personName || "未知",
+      case_type: formData.caseType || "盗窃案"
+    })
+    recordId.value = response.data.record_id
+    chatList.value.push({
+      role: 'ai',
+      content: response.data.ai_reply
+    })
+    recordText.value += `\nAI警官：${response.data.ai_reply}`
+  } catch (error) {
+    console.error("初始化笔录失败:", error)
+  }
+}
+
+// 切换录音状态
+const toggleRecording = async () => {
+  if (isRecording.value) {
+    // 停止录音
+    if (mediaRecorder.value) {
+      mediaRecorder.value.stop()
+      isRecording.value = false
+    }
+  } else {
+    // 开始录音
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaRecorder.value = new MediaRecorder(stream)
+      audioChunks.value = []
+
+      mediaRecorder.value.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.value.push(event.data)
+        }
+      }
+
+      mediaRecorder.value.onstop = async () => {
+        const audioBlob = new Blob(audioChunks.value, { type: 'audio/wav' })
+        const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' })
+        await transcribeAudio(audioFile)
+        
+        // 停止媒体流
+        stream.getTracks().forEach(track => track.stop())
+      }
+
+      mediaRecorder.value.start()
+      isRecording.value = true
+    } catch (error) {
+      console.error("录音失败:", error)
+    }
+  }
+}
+
+// 语音转文字
+const transcribeAudio = async (audioFile: File) => {
+  try {
+    isProcessing.value = true
+    const response = await speechToText(audioFile)
+    reporterInput.value = response.text
+  } catch (error) {
+    console.error("语音识别失败:", error)
+  } finally {
+    isProcessing.value = false
+  }
+}
+
+// 发送消息
+const sendMessage = async () => {
+  if (!reporterInput.value.trim() || !recordId.value) return
+
+  // 添加用户消息到聊天列表
+  chatList.value.push({
+    role: 'user',
+    content: reporterInput.value
+  })
+  recordText.value += `\n嫌疑人：${reporterInput.value}`
+
+  try {
+    isProcessing.value = true
+    const response = await chatWithAI({
+      record_id: recordId.value,
+      reporter_text: reporterInput.value
+    })
+
+    // 添加AI回复到聊天列表
+    chatList.value.push({
+      role: 'ai',
+      content: response.ai_reply
+    })
+    recordText.value += `\nAI警官：${response.ai_reply}`
+
+    // 更新分析信息
+    if (response.extracted_info) {
+      const info = response.extracted_info
+      analysis.value = `案情：${info.案情 || '未提供'}\n发生时间：${info['发生时间'] || '未提供'}\n发生地点：${info['发生地点'] || '未提供'}\n嫌疑人信息：${info['嫌疑人信息'] || '未提供'}`
+    }
+
+    // 清空输入
+    reporterInput.value = ""
+  } catch (error) {
+    console.error("发送消息失败:", error)
+  } finally {
+    isProcessing.value = false
+  }
+}
+
+// 生命周期钩子，组件挂载时初始化笔录
+onMounted(() => {
+  initRecord()
+})
 
 const pause = () => console.log("暂停")
 const resume = () => console.log("继续")
@@ -304,6 +441,85 @@ const finish = () => console.log("结束")
 
 .chat-content.answer {
   color: var(--text-soft);
+}
+
+.recording-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(114, 136, 177, 0.14);
+}
+
+.recording-input {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recording-input textarea {
+  flex: 1;
+  min-height: 100px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(114, 136, 177, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  resize: vertical;
+}
+
+.recording-input textarea:focus {
+  outline: none;
+  border-color: rgba(29, 111, 216, 0.5);
+  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+}
+
+.record-btn {
+  width: 120px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(29, 111, 216, 0.08);
+  color: var(--brand);
+  border: 1px solid rgba(29, 111, 216, 0.2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.record-btn:hover {
+  background: rgba(29, 111, 216, 0.12);
+}
+
+.record-btn.recording {
+  background: rgba(220, 53, 69, 0.12);
+  color: #dc3545;
+  border-color: rgba(220, 53, 69, 0.3);
+  animation: pulse 1.5s infinite;
+}
+
+.record-btn:disabled,
+.soft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.recording-input textarea:disabled {
+  background: rgba(255, 255, 255, 0.7);
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+  }
+}
+
+.input-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .info-list {
