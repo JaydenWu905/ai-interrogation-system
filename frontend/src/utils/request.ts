@@ -1,8 +1,8 @@
 import axios from "axios"
 
 const service = axios.create({
-  baseURL: "https://m1.apifoxmock.com/m1/8016126-7770654-7390704/api",
-  timeout: 5000,
+  baseURL: "http://127.0.0.1:8000/api",
+  timeout: 30000,
 })
 
 

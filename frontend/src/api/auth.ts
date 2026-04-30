@@ -11,3 +11,10 @@ export function login(data: {
     data,
   })
 }
+
+export function logout() {
+  return request({
+    url: "/v1/auth/logout",
+    method: "POST",
+  })
+}
