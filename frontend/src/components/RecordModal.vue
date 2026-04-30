@@ -40,7 +40,13 @@
 
         <label class="field wide">
           <span>被询问人</span>
-          <input v-model="form.personName" placeholder="请输入姓名或从列表中选择" />
+          <input 
+            v-model="form.personName" 
+            type="text"
+            placeholder="请输入姓名（支持中文）" 
+            autocomplete="off"
+            inputmode="text"
+          />
         </label>
 
         <label class="field">
