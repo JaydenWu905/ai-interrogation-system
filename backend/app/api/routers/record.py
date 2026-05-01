@@ -1,6 +1,7 @@
 import json
 from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session
+from openai import AsyncOpenAI
 from app.models import Record
 from app.database import get_session
 from app.api.deps import verify_token
@@ -50,57 +51,90 @@ async def start_record(
         }
     }
 
-@router.post("/chat", response_model=ChatResponse, summary="2. 核心对话流 (根据状态自动流转)")
+DEEPSEEK_API_KEY = "sk-cc4fb462867446d78ad8b6beb1f85c8f" 
+client = AsyncOpenAI(
+    api_key=DEEPSEEK_API_KEY, 
+    base_url="https://api.deepseek.com" # 魔法：把对讲机频段调到 DeepSeek
+)
+
+@router.post("/chat", response_model=ChatResponse, summary="2. 核心对话流 (大模型接管)")
 async def chat_with_ai(
     req: ChatRequest, 
     token: str = Depends(verify_token),
     session: Session = Depends(get_session)
 ):
-    # 1. 去数据库查一下当前这个案件
+    # 1. 查出数据库中的笔录记录
     db_record = session.get(Record, req.record_id)
     if not db_record:
-        raise HTTPException(status_code=404, detail="找不到该笔录ID，请先调用 start 接口创建")
+        raise HTTPException(status_code=404, detail="找不到该笔录ID")
 
     user_text = req.reporter_text
     current_status = db_record.status
-    # 把数据库里的字符串，反解析成 Python 字典，方便修改
-    extracted_info = json.loads(db_record.extracted_info)
-    
-    # 无论说什么，先把嫌疑人的原话记入长篇聊天记录 (content)
+    extracted_info = db_record.extracted_info # 这是之前的 JSON 字符串
+
+    # 2. 将嫌疑人的最新发言追加到长篇对话记录中
     db_record.content += f"\n嫌疑人：{user_text}"
+
+    # ============== 🤖 大模型核心工作区 ============== #
     
-    ai_reply = ""
-
-    # ============== 状态机核心逻辑 (原汁原味保留) ============== #
+    # 撰写发给大模型的“系统提示词”
+    system_prompt = f"""
+    你是一名经验丰富的中国刑警。当前案件审讯状态为：【{current_status}】。
+    你目前已经掌握的线索是：{extracted_info}
     
-    if current_status == "等待权利义务确认":
-        if "不明白" in user_text or "不知道" in user_text or "不清楚" in user_text:
-            ai_reply = "如果你对刚才宣读的权利和义务有疑问，我可以为你重新解释一遍。请问需要重播吗？"
-        elif "明白" in user_text or "知道" in user_text or "清楚" in user_text:
-            db_record.status = "AI询问中"  # 状态晋级！
-            ai_reply = "好的，请你详细叙述一下案件发生的经过。"
-        else:
-            ai_reply = "你需要明确回答“明白”或“不明白”。请问你清楚刚才宣读的权利和义务了吗？"
+    你的任务是仔细阅读我接下来发给你的完整聊天记录，然后：
+    1. 根据嫌疑人最新的话，给出你作为警察的下一句合理回应或追问。
+    2. 如果当前状态是'等待权利义务确认'，且嫌疑人表示明白，你需要把状态改为'AI询问中'并开始询问案情；如果他说没有补充了，状态改为'笔录结束'并输出固定结语。
+    3. 整合嫌疑人提到的最新线索，更新已有线索（案情、时间、地点、嫌疑人特征）。如果未提到，保持原样。
 
-    elif current_status == "AI询问中":
-        if "没有了" in user_text or "就这些" in user_text:
-            db_record.status = "笔录结束"
-            ai_reply = FIXED_CLOSING
-        else:
-            # 模拟追加案情
-            extracted_info["案情"] += user_text + " "
-            ai_reply = "你提到的情况我已经记录。请继续补充案发的具体时间和地点，以及嫌疑人的长相特征？"
+    【极度重要】：你必须且只能回复一个合法的 JSON 数据包！不要包裹在 markdown 代码块里，直接输出 JSON！
+    必须严格包含以下三个字段：
+    {{
+        "ai_reply": "你对嫌疑人说的话",
+        "new_status": "案件的新状态",
+        "extracted_info": {{
+            "案情": "...",
+            "发生时间": "...",
+            "发生地点": "...",
+            "嫌疑人信息": "..."
+        }}
+    }}
+    """
 
-    else:
-        ai_reply = "本次笔录已结束，感谢您的配合。"
+    try:
+        # 调用 DeepSeek 大模型
+        response = await client.chat.completions.create(
+            model="deepseek-chat", # 使用 DeepSeek 对话模型
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"以下是完整的聊天记录，请分析并给出下一步回应：\n{db_record.content}"}
+            ],
+            response_format={"type": "json_object"}, # 强制要求模型输出 JSON 格式
+            temperature=0.3 # 温度调低点，让警察显得严谨、不啰嗦
+        )
+        
+        # 提取模型回复的文本内容
+        ai_response_text = response.choices[0].message.content
+        
+        # 将模型回复的 JSON 字符串反序列化为 Python 字典
+        result_data = json.loads(ai_response_text)
+        
+        ai_reply = result_data.get("ai_reply", "抱歉，系统处理出现异常。")
+        new_status = result_data.get("new_status", current_status)
+        new_extracted_info = result_data.get("extracted_info", {})
+        
+    except Exception as e:
+        print(f"大模型调用失败: {e}")
+        raise HTTPException(status_code=500, detail="AI 大脑暂时开小差了，请稍后再试。")
 
-    # ============== 结束处理，保存入库 ============== #
+    # ============== 收尾，保存入库 ============== #
     
-    # 1. 把 AI 的回复也记入长篇聊天记录
+    # 1. 把 AI 的回复记入长篇聊天记录
     db_record.content += f"\nAI警官：{ai_reply}"
     
-    # 2. 把修改后的字典，重新打包成字符串存回数据库
-    db_record.extracted_info = json.dumps(extracted_info, ensure_ascii=False)
+    # 2. 更新状态和线索
+    db_record.status = new_status
+    db_record.extracted_info = json.dumps(new_extracted_info, ensure_ascii=False)
     
     # 3. 提交给硬盘永久保存
     session.add(db_record)
@@ -109,5 +143,5 @@ async def chat_with_ai(
     return ChatResponse(
         ai_reply=ai_reply,
         status=db_record.status,
-        extracted_info=extracted_info
+        extracted_info=new_extracted_info
     )
