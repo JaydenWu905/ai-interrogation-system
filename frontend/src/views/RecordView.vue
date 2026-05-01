@@ -59,9 +59,9 @@
           <div class="recording-section">
             <div class="recording-input">
               <textarea v-model="reporterInput" placeholder="请输入或点击录音按钮进行语音输入..." :disabled="isProcessing"></textarea>
-              <button
-                class="record-btn"
-                :class="{ 'recording': isRecording }"
+              <button 
+                class="record-btn" 
+                :class="{ 'recording': isRecording }" 
                 @click="toggleRecording"
                 :disabled="isProcessing"
               >
@@ -155,32 +155,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue"
+import { ref, onMounted, computed, reactive } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { startRecord, chatWithAI, speechToText } from "@/api/record"
 
 const route = useRoute()
 const router = useRouter()
 
-let formData: Record<string, string> = {}
+const formData = reactive<Record<string, string>>({})
 
 const showSaveModal = ref(false)
 if (route.query.form) {
-  formData = JSON.parse(route.query.form as string)
+  Object.assign(formData, JSON.parse(route.query.form as string))
 }
 
-const recordText = ref(`
-询问时间：2026-04-19
-
-一、到场情况
-被询问人已到场，身份信息已核验，正在进行基础情况确认。
-
-二、询问内容
-请按时间顺序补充案发经过、接触人员、关键物证和后续行动描述。
-
-三、补充说明
-此区域可继续接入语音转写或 AI 自动整理后的笔录内容。
-`.trim())
+const recordText = ref("")
 
 // 对话列表，存储AI和用户的交替消息
 const chatList = ref<Array<{ role: 'ai' | 'user', content: string }>>([])
@@ -224,12 +213,12 @@ const isProcessing = ref(false)
 // 初始化笔录
 const initRecord = async () => {
   try {
-    const response = await startRecord({
+    const response: any = await startRecord({
       caseType: formData.caseType || "盗窃案",
-      caseName: formData.caseName || "",
-      personType: formData.personType || "",
-      personName: formData.personName || "",
-      idType: formData.idType || "",
+      caseName: formData.caseName || "未立案",
+      personType: formData.personType || "证人",
+      personName: formData.personName || "未知",
+      idType: formData.idType || "身份证",
       idNumber: formData.idNumber || ""
     })
     recordId.value = response.data.record_id
@@ -268,7 +257,7 @@ const toggleRecording = async () => {
         const audioBlob = new Blob(audioChunks.value, { type: 'audio/wav' })
         const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' })
         await transcribeAudio(audioFile)
-
+        
         // 停止媒体流
         stream.getTracks().forEach(track => track.stop())
       }
@@ -364,7 +353,7 @@ onMounted(() => {
 const pause = () => console.log("暂停")
 const resume = () => console.log("继续")
 const print = () => console.log("打印")
-const finish = () => console.log("结束并归档")
+const finish = () => console.log("结束")
 </script>
 
 <style scoped>
@@ -404,28 +393,45 @@ const finish = () => console.log("结束并归档")
 }
 
 .record-top p,
-.section-head p {
-  margin: 6px 0 0;
+.analysis-card p {
   color: var(--text-soft);
 }
 
 .top-actions {
   display: flex;
-  align-items: flex-start;
   gap: 12px;
+  align-items: center;
+}
+
+.soft-btn,
+.primary-btn {
+  height: 46px;
+  padding: 0 18px;
+  border-radius: 14px;
+}
+
+.soft-btn {
+  background: rgba(29, 111, 216, 0.08);
+  color: var(--brand);
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--brand), var(--brand-deep));
+  color: #fff;
 }
 
 .record-layout {
-  margin-top: 24px;
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.95fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1.4fr) 360px;
+  gap: 20px;
+  margin-top: 20px;
 }
 
 .record-editor,
-.record-side,
+.chat-panel,
+.info-panel,
 .analysis-panel {
-  min-width: 0;
+  padding: 24px;
 }
 
 .chat-panel {
@@ -451,46 +457,44 @@ const finish = () => console.log("结束并归档")
 .section-head {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   align-items: center;
-  gap: 16px;
   margin-bottom: 18px;
 }
 
 .section-head.compact {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .state-pill {
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 999px;
+  background: rgba(17, 166, 161, 0.12);
+  color: var(--accent);
   font-size: 12px;
-  color: #166534;
-  background: rgba(34, 197, 94, 0.14);
 }
 
-textarea {
+.record-editor textarea {
   width: 100%;
-  min-height: 480px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.7);
-  padding: 18px;
-  font: inherit;
-  line-height: 1.7;
-  resize: vertical;
+  min-height: 560px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(114, 136, 177, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  line-height: 1.8;
+}
+
+.record-editor textarea:focus {
+  outline: none;
+  border-color: rgba(29, 111, 216, 0.5);
+  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
 }
 
 .record-side {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-}
-
-.chat-panel,
-.info-panel,
-.analysis-panel,
-.record-editor {
-  padding: 20px;
+  gap: 20px;
 }
 
 .chat-list {
@@ -547,26 +551,69 @@ textarea {
 .recording-input {
   display: flex;
   gap: 12px;
+  margin-bottom: 12px;
 }
 
 .recording-input textarea {
-  min-height: 100px;
   flex: 1;
+  min-height: 100px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(114, 136, 177, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  resize: vertical;
+}
+
+.recording-input textarea:focus {
+  outline: none;
+  border-color: rgba(29, 111, 216, 0.5);
+  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
 }
 
 .record-btn {
-  min-width: 100px;
-  padding: 12px 16px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--line-soft);
-  background: white;
+  width: 120px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(29, 111, 216, 0.08);
+  color: var(--brand);
+  border: 1px solid rgba(29, 111, 216, 0.2);
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.record-btn:hover {
+  background: rgba(29, 111, 216, 0.12);
 }
 
 .record-btn.recording {
-  background: #ef4444;
-  color: white;
-  border-color: #ef4444;
+  background: rgba(220, 53, 69, 0.12);
+  color: #dc3545;
+  border-color: rgba(220, 53, 69, 0.3);
+  animation: pulse 1.5s infinite;
+}
+
+.record-btn:disabled,
+.soft-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.recording-input textarea:disabled {
+  background: rgba(255, 255, 255, 0.7);
+  cursor: not-allowed;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
+  }
 }
 
 .modal-overlay {
@@ -684,42 +731,43 @@ textarea {
 
 .info-list {
   display: grid;
-  gap: 16px;
+  gap: 14px;
+  margin: 0;
 }
 
 .info-list div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px dashed var(--line-soft);
-  padding-bottom: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(114, 136, 177, 0.14);
 }
 
 .info-list dt {
   color: var(--text-faint);
+  font-size: 13px;
 }
 
 .info-list dd {
-  margin: 0;
-  color: var(--text-strong);
-  text-align: right;
+  margin: 8px 0 0;
+  color: var(--text-main);
+  font-weight: 600;
 }
 
 .analysis-panel {
-  margin-top: 24px;
+  margin-top: 20px;
 }
 
 .analysis-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
+  gap: 16px;
 }
 
 .analysis-card {
   padding: 18px;
-  border-radius: var(--radius-xl);
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(114, 136, 177, 0.14);
 }
 
 .analysis-card strong {
@@ -727,35 +775,8 @@ textarea {
   margin-bottom: 10px;
 }
 
-.analysis-card p {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.65;
-  white-space: pre-line;
-}
-
 .analysis-card.accent {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(99, 102, 241, 0.12));
-}
-
-.soft-btn,
-.primary-btn {
-  border: none;
-  border-radius: var(--radius-lg);
-  padding: 10px 16px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.soft-btn {
-  background: rgba(148, 163, 184, 0.14);
-  color: var(--text-strong);
-}
-
-.primary-btn {
-  background: linear-gradient(135deg, var(--accent), #4f46e5);
-  color: white;
-  box-shadow: 0 18px 32px rgba(79, 70, 229, 0.22);
+  background: linear-gradient(145deg, rgba(29, 111, 216, 0.1), rgba(17, 166, 161, 0.12));
 }
 
 @media (max-width: 1100px) {
@@ -763,31 +784,20 @@ textarea {
   .analysis-grid {
     grid-template-columns: 1fr;
   }
-}
-
-@media (max-width: 720px) {
-  .record-page {
-    padding: 18px;
-  }
 
   .record-top {
     flex-direction: column;
   }
+}
+
+@media (max-width: 720px) {
+  .record-page {
+    padding: 16px;
+  }
 
   .top-actions {
-    width: 100%;
-    justify-content: stretch;
     flex-wrap: wrap;
   }
-
-  .top-actions button,
-  .record-btn,
-  .input-actions button {
-    width: 100%;
-  }
-
-  .recording-input {
-    flex-direction: column;
-  }
 }
+
 </style>
