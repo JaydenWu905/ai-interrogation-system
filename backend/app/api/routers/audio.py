@@ -15,7 +15,7 @@ asr_model = AutoModel(
     model="paraformer-zh",
     vad_model="fsmn-vad",
     punc_model="ct-punc",
-    # disable_update=True # 如果你不想它每次启动都去检查更新，可以解除这行注释
+    disable_update=True # 如果你不想它每次启动都去检查更新，可以解除这行注释
 )
 print("✅ FunASR 模型装载完毕！")
 

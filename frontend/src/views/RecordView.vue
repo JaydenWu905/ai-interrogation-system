@@ -49,9 +49,9 @@
           <div class="recording-section">
             <div class="recording-input">
               <textarea v-model="reporterInput" placeholder="请输入或点击录音按钮进行语音输入..." :disabled="isProcessing"></textarea>
-              <button 
-                class="record-btn" 
-                :class="{ 'recording': isRecording }" 
+              <button
+                class="record-btn"
+                :class="{ 'recording': isRecording }"
                 @click="toggleRecording"
                 :disabled="isProcessing"
               >
@@ -158,15 +158,19 @@ const isRecording = ref(false)
 const mediaRecorder = ref<MediaRecorder | null>(null)
 const audioChunks = ref<Blob[]>([])
 const reporterInput = ref("")
-const recordId = ref("")
+const recordId = ref<number | null>(null)
 const isProcessing = ref(false)
 
 // 初始化笔录
 const initRecord = async () => {
   try {
     const response = await startRecord({
-      reporter_name: formData.personName || "未知",
-      case_type: formData.caseType || "盗窃案"
+      caseType: formData.caseType || "盗窃案",
+      caseName: formData.caseName || "",
+      personType: formData.personType || "",
+      personName: formData.personName || "",
+      idType: formData.idType || "",
+      idNumber: formData.idNumber || ""
     })
     recordId.value = response.data.record_id
     chatList.value.push({
@@ -204,7 +208,7 @@ const toggleRecording = async () => {
         const audioBlob = new Blob(audioChunks.value, { type: 'audio/wav' })
         const audioFile = new File([audioBlob], 'recording.wav', { type: 'audio/wav' })
         await transcribeAudio(audioFile)
-        
+
         // 停止媒体流
         stream.getTracks().forEach(track => track.stop())
       }
@@ -221,7 +225,7 @@ const toggleRecording = async () => {
 const transcribeAudio = async (audioFile: File) => {
   try {
     isProcessing.value = true
-    const response = await speechToText(audioFile)
+    const response: any = await speechToText(audioFile)
     reporterInput.value = response.text
   } catch (error) {
     console.error("语音识别失败:", error)
@@ -232,7 +236,7 @@ const transcribeAudio = async (audioFile: File) => {
 
 // 发送消息
 const sendMessage = async () => {
-  if (!reporterInput.value.trim() || !recordId.value) return
+  if (!reporterInput.value.trim() || recordId.value === null) return
 
   // 添加用户消息到聊天列表
   chatList.value.push({
@@ -243,7 +247,7 @@ const sendMessage = async () => {
 
   try {
     isProcessing.value = true
-    const response = await chatWithAI({
+    const response: any = await chatWithAI({
       record_id: recordId.value,
       reporter_text: reporterInput.value
     })
@@ -258,7 +262,7 @@ const sendMessage = async () => {
     // 更新分析信息
     if (response.extracted_info) {
       const info = response.extracted_info
-      analysis.value = `案情：${info.案情 || '未提供'}\n发生时间：${info['发生时间'] || '未提供'}\n发生地点：${info['发生地点'] || '未提供'}\n嫌疑人信息：${info['嫌疑人信息'] || '未提供'}`
+      analysis.value = `案情：${info.案情 || '未提供'}\n发生时间：${info['发生时间'] || '未提供'}\n发生地点：${info['发生地点'] || '未提供'}\n相关人员信息：${info['相关人员信息'] || '未提供'}`
     }
 
     // 清空输入
@@ -278,7 +282,7 @@ onMounted(() => {
 const pause = () => console.log("暂停")
 const resume = () => console.log("继续")
 const print = () => console.log("打印")
-const finish = () => console.log("结束")
+const finish = () => console.log("结束并归档")
 </script>
 
 <style scoped>
@@ -318,203 +322,139 @@ const finish = () => console.log("结束")
 }
 
 .record-top p,
-.analysis-card p {
+.section-head p {
+  margin: 6px 0 0;
   color: var(--text-soft);
 }
 
 .top-actions {
   display: flex;
+  align-items: flex-start;
   gap: 12px;
-  align-items: center;
-}
-
-.soft-btn,
-.primary-btn {
-  height: 46px;
-  padding: 0 18px;
-  border-radius: 14px;
-}
-
-.soft-btn {
-  background: rgba(29, 111, 216, 0.08);
-  color: var(--brand);
-}
-
-.primary-btn {
-  background: linear-gradient(135deg, var(--brand), var(--brand-deep));
-  color: #fff;
 }
 
 .record-layout {
+  margin-top: 24px;
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) 360px;
-  gap: 20px;
-  margin-top: 20px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.95fr);
+  gap: 24px;
 }
 
 .record-editor,
-.chat-panel,
-.info-panel,
+.record-side,
 .analysis-panel {
-  padding: 24px;
+  min-width: 0;
 }
 
 .section-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
   align-items: center;
+  gap: 16px;
   margin-bottom: 18px;
 }
 
 .section-head.compact {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .state-pill {
-  padding: 8px 12px;
+  padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(17, 166, 161, 0.12);
-  color: var(--accent);
   font-size: 12px;
+  color: #166534;
+  background: rgba(34, 197, 94, 0.14);
 }
 
-.record-editor textarea {
+textarea {
   width: 100%;
-  min-height: 560px;
-  padding: 22px;
-  border-radius: 20px;
-  border: 1px solid rgba(114, 136, 177, 0.16);
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--text-main);
-  line-height: 1.8;
-}
-
-.record-editor textarea:focus {
-  outline: none;
-  border-color: rgba(29, 111, 216, 0.5);
-  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+  min-height: 480px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.7);
+  padding: 18px;
+  font: inherit;
+  line-height: 1.7;
+  resize: vertical;
 }
 
 .record-side {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
+}
+
+.chat-panel,
+.info-panel,
+.analysis-panel,
+.record-editor {
+  padding: 20px;
 }
 
 .chat-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 
 .chat-item {
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  gap: 10px 12px;
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(114, 136, 177, 0.14);
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
 }
 
 .chat-role {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
   display: grid;
   place-items: center;
-  background: rgba(29, 111, 216, 0.1);
-  color: var(--brand);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.chat-role.answer {
-  background: rgba(17, 166, 161, 0.12);
-  color: var(--accent);
+  font-weight: 600;
 }
 
 .chat-content {
-  color: var(--text-main);
-}
-
-.chat-content.answer {
-  color: var(--text-soft);
+  flex: 1;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  line-height: 1.6;
 }
 
 .recording-section {
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(114, 136, 177, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .recording-input {
   display: flex;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .recording-input textarea {
-  flex: 1;
   min-height: 100px;
-  padding: 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(114, 136, 177, 0.16);
-  background: rgba(255, 255, 255, 0.96);
-  color: var(--text-main);
-  resize: vertical;
-}
-
-.recording-input textarea:focus {
-  outline: none;
-  border-color: rgba(29, 111, 216, 0.5);
-  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+  flex: 1;
 }
 
 .record-btn {
-  width: 120px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(29, 111, 216, 0.08);
-  color: var(--brand);
-  border: 1px solid rgba(29, 111, 216, 0.2);
+  min-width: 100px;
+  padding: 12px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-soft);
+  background: white;
   cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.record-btn:hover {
-  background: rgba(29, 111, 216, 0.12);
 }
 
 .record-btn.recording {
-  background: rgba(220, 53, 69, 0.12);
-  color: #dc3545;
-  border-color: rgba(220, 53, 69, 0.3);
-  animation: pulse 1.5s infinite;
-}
-
-.record-btn:disabled,
-.soft-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.recording-input textarea:disabled {
-  background: rgba(255, 255, 255, 0.7);
-  cursor: not-allowed;
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(220, 53, 69, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(220, 53, 69, 0);
-  }
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
 }
 
 .input-actions {
@@ -524,43 +464,42 @@ const finish = () => console.log("结束")
 
 .info-list {
   display: grid;
-  gap: 14px;
-  margin: 0;
+  gap: 16px;
 }
 
 .info-list div {
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(114, 136, 177, 0.14);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px dashed var(--line-soft);
+  padding-bottom: 10px;
 }
 
 .info-list dt {
   color: var(--text-faint);
-  font-size: 13px;
 }
 
 .info-list dd {
-  margin: 8px 0 0;
-  color: var(--text-main);
-  font-weight: 600;
+  margin: 0;
+  color: var(--text-strong);
+  text-align: right;
 }
 
 .analysis-panel {
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
 .analysis-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 18px;
 }
 
 .analysis-card {
   padding: 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(114, 136, 177, 0.14);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .analysis-card strong {
@@ -568,8 +507,35 @@ const finish = () => console.log("结束")
   margin-bottom: 10px;
 }
 
+.analysis-card p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
 .analysis-card.accent {
-  background: linear-gradient(145deg, rgba(29, 111, 216, 0.1), rgba(17, 166, 161, 0.12));
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(99, 102, 241, 0.12));
+}
+
+.soft-btn,
+.primary-btn {
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 10px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.soft-btn {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text-strong);
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--accent), #4f46e5);
+  color: white;
+  box-shadow: 0 18px 32px rgba(79, 70, 229, 0.22);
 }
 
 @media (max-width: 1100px) {
@@ -577,20 +543,31 @@ const finish = () => console.log("结束")
   .analysis-grid {
     grid-template-columns: 1fr;
   }
-
-  .record-top {
-    flex-direction: column;
-  }
 }
 
 @media (max-width: 720px) {
   .record-page {
-    padding: 16px;
+    padding: 18px;
+  }
+
+  .record-top {
+    flex-direction: column;
   }
 
   .top-actions {
+    width: 100%;
+    justify-content: stretch;
     flex-wrap: wrap;
   }
-}
 
+  .top-actions button,
+  .record-btn,
+  .input-actions button {
+    width: 100%;
+  }
+
+  .recording-input {
+    flex-direction: column;
+  }
+}
 </style>

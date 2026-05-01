@@ -89,7 +89,7 @@ const metrics = [
 
 const handleLogin = async () => {
   try {
-    const res = await login({
+    const res: any = await login({
       police_number: policeNumber.value,
       password: password.value,
       remember_me: remember.value,

@@ -1,6 +1,6 @@
 import json # 记得顶部引入 json 模块，因为我们要用它来处理字符串和字典之间的转换
 from sqlmodel import SQLModel, create_engine, Session, select
-from app.models import User, Record # 必须引入刚才写的模型，不然系统不知道要建什么表
+from app.models import User, Record, RecordCreateInfo # 必须引入刚才写的模型，不然系统不知道要建什么表
 
 # 1. 指定数据库文件名，它会自动在你项目的根目录生成一个 database.db 文件
 sqlite_file_name = "database.db"

@@ -2,6 +2,7 @@ from sqlmodel import SQLModel, Field
 from typing import Optional
 from datetime import datetime
 
+
 # 1. 警员表 (User)
 # table=True 的意思是：这不仅仅是个数据校验格式，还要真正在数据库里建一张表！
 class User(SQLModel, table=True):
@@ -11,6 +12,7 @@ class User(SQLModel, table=True):
     name: str = Field(description="警官姓名")
     department: str = Field(description="所属部门")
 
+
 # 2. 笔录表 (Record)
 class Record(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -19,7 +21,21 @@ class Record(SQLModel, table=True):
     content: str = Field(default="", description="笔录的完整聊天记录")
     status: str = Field(default="等待权利义务确认", description="当前案件状态")
     extracted_info: str = Field(
-        default='{"案情": "", "发生时间": "", "发生地点": "", "嫌疑人信息": ""}', 
+        default='{"案情": "", "发生时间": "", "发生地点": "", "嫌疑人信息": ""}',
         description="提取的结构化信息 (JSON字符串格式)"
     )
+    created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
+
+
+# 3. 新建笔录基础信息表 (RecordCreateInfo)
+class RecordCreateInfo(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    record_id: int = Field(index=True, description="关联的笔录主表ID")
+    police_number: str = Field(index=True, description="建档警员警号快照")
+    case_type: str = Field(default="", description="案件类型")
+    case_name: str = Field(default="", description="案件名称")
+    person_type: str = Field(default="", description="被询问人身份")
+    person_name: str = Field(default="", description="被询问人姓名")
+    id_type: str = Field(default="", description="证件类型")
+    id_number: str = Field(default="", description="证件号码")
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
