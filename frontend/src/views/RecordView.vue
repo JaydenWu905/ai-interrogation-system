@@ -11,8 +11,10 @@
       </div>
 
       <div class="top-actions">
+        <button class="soft-btn" @click="goHome">回到主页面</button>
         <button class="soft-btn" @click="pause">暂停</button>
         <button class="soft-btn" @click="resume">继续</button>
+        <button class="primary-btn" @click="showSaveModal = true">保存笔录</button>
         <button class="primary-btn" @click="print">打印笔录</button>
       </div>
     </header>
@@ -40,9 +42,17 @@
           </div>
 
           <div class="chat-list">
-            <article v-for="(item, index) in chatList" :key="index" class="chat-item">
-              <div class="chat-role">{{ item.role === 'ai' ? 'AI' : '问' }}</div>
-              <div class="chat-content">{{ item.content }}</div>
+            <article v-for="(item, index) in formattedChatList" :key="index" class="chat-item">
+              <div class="chat-pair">
+                <div class="chat-row ai-row">
+                  <span class="chat-label">问：</span>
+                  <span class="chat-text">{{ item.question }}</span>
+                </div>
+                <div class="chat-row user-row" v-if="item.answer">
+                  <span class="chat-label">答：</span>
+                  <span class="chat-text">{{ item.answer }}</span>
+                </div>
+              </div>
             </article>
           </div>
 
@@ -120,17 +130,41 @@
         </article>
       </div>
     </section>
+
+    <div v-if="showSaveModal" class="modal-overlay" @click.self="showSaveModal = false">
+      <div class="save-modal">
+        <div class="modal-header">
+          <h3>确认保存笔录</h3>
+          <button class="close-btn" @click="showSaveModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <p>您确定要保存当前笔录吗？</p>
+          <div class="record-preview">
+            <strong>笔录内容预览：</strong>
+            <textarea readonly>{{ recordText }}</textarea>
+          </div>
+          <p class="modal-tip">保存后可在案件管理中查看和编辑。</p>
+        </div>
+        <div class="modal-footer">
+          <button class="cancel-btn" @click="showSaveModal = false">取消</button>
+          <button class="confirm-btn" @click="confirmSave">确认保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue"
-import { useRoute } from "vue-router"
+import { ref, onMounted, computed } from "vue"
+import { useRoute, useRouter } from "vue-router"
 import { startRecord, chatWithAI, speechToText } from "@/api/record"
 
 const route = useRoute()
+const router = useRouter()
 
 let formData: Record<string, string> = {}
+
+const showSaveModal = ref(false)
 if (route.query.form) {
   formData = JSON.parse(route.query.form as string)
 }
@@ -148,8 +182,34 @@ const recordText = ref(`
 此区域可继续接入语音转写或 AI 自动整理后的笔录内容。
 `.trim())
 
-// 对话列表，修改为更适合AI对话的结构
+// 对话列表，存储AI和用户的交替消息
 const chatList = ref<Array<{ role: 'ai' | 'user', content: string }>>([])
+
+// 格式化聊天列表为一问一答的格式
+const formattedChatList = computed(() => {
+  const pairs: Array<{ question: string; answer: string | null }> = []
+  let currentQuestion: string | null = null
+  
+  chatList.value.forEach((item) => {
+    if (item.role === 'ai') {
+      if (currentQuestion) {
+        pairs.push({ question: currentQuestion, answer: null })
+      }
+      currentQuestion = item.content
+    } else {
+      if (currentQuestion) {
+        pairs.push({ question: currentQuestion, answer: item.content })
+        currentQuestion = null
+      }
+    }
+  })
+  
+  if (currentQuestion) {
+    pairs.push({ question: currentQuestion, answer: null })
+  }
+  
+  return pairs
+})
 
 const analysis = ref("系统将根据对话内容自动生成案件要素摘要，并辅助提示待补全的信息字段。")
 
@@ -218,6 +278,28 @@ const toggleRecording = async () => {
     } catch (error) {
       console.error("录音失败:", error)
     }
+  }
+}
+
+// 回到主页面
+const goHome = () => {
+  router.push("/")
+}
+
+// 确认保存笔录
+const confirmSave = async () => {
+  try {
+    if (!recordId.value) {
+      alert("笔录尚未初始化完成，暂时无法保存")
+      return
+    }
+
+    alert("当前笔录已创建并自动保存到数据库，可继续询问或返回主页。")
+    showSaveModal.value = false
+    router.push("/")
+  } catch (error) {
+    console.error("保存笔录失败:", error)
+    alert("保存失败，请重试")
   }
 }
 
@@ -346,6 +428,26 @@ const finish = () => console.log("结束并归档")
   min-width: 0;
 }
 
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 400px;
+}
+
+.chat-panel .section-head {
+  flex-shrink: 0;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: 400px;
+  padding-right: 8px;
+}
+
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -394,42 +496,52 @@ textarea {
 .chat-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-  max-height: 300px;
-  overflow-y: auto;
+  gap: 16px;
 }
 
 .chat-item {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
+  padding: 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(114, 136, 177, 0.14);
 }
 
-.chat-role {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--accent);
-  display: grid;
-  place-items: center;
-  font-weight: 600;
-}
-
-.chat-content {
-  flex: 1;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.82);
-  line-height: 1.6;
-}
-
-.recording-section {
+.chat-pair {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.chat-row {
+  display: flex;
+  gap: 8px;
+  line-height: 1.6;
+}
+
+.chat-label {
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.ai-row .chat-label {
+  color: var(--brand);
+}
+
+.user-row .chat-label {
+  color: var(--accent);
+}
+
+.chat-text {
+  color: var(--text-main);
+  flex: 1;
+  word-break: break-word;
+}
+
+.recording-section {
+  margin-top: auto;
+  padding-top: 20px;
+  border-top: 1px solid rgba(114, 136, 177, 0.14);
+  flex-shrink: 0;
 }
 
 .recording-input {
@@ -455,6 +567,114 @@ textarea {
   background: #ef4444;
   color: white;
   border-color: #ef4444;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 20, 36, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.save-modal {
+  width: min(600px, 100%);
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+  border-bottom: 1px solid rgba(114, 136, 177, 0.12);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.modal-header .close-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(114, 136, 177, 0.1);
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-soft);
+}
+
+.modal-body {
+  padding: 24px;
+}
+
+.modal-body p {
+  margin: 0 0 16px;
+  color: var(--text-soft);
+}
+
+.record-preview {
+  margin-bottom: 16px;
+}
+
+.record-preview strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+
+.record-preview textarea {
+  width: 100%;
+  min-height: 150px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(114, 136, 177, 0.16);
+  background: rgba(248, 249, 251, 0.9);
+  color: var(--text-main);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.modal-tip {
+  font-size: 14px;
+  color: var(--text-soft) !important;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  border-top: 1px solid rgba(114, 136, 177, 0.12);
+  background: rgba(248, 249, 251, 0.5);
+}
+
+.cancel-btn {
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: rgba(114, 136, 177, 0.12);
+  color: var(--text-soft);
+  border: none;
+  cursor: pointer;
+}
+
+.confirm-btn {
+  padding: 12px 24px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-deep));
+  color: #fff;
+  border: none;
+  cursor: pointer;
 }
 
 .input-actions {
