@@ -40,7 +40,15 @@ export const speechToText = (file: File) => {
 
 export const createRecord = (data: any) => {
   return request({
-    url: "/v1/record/create", // 后端接口
+    url: "/v1/records/create",
+    method: "POST",
+    data
+  })
+}
+
+export const saveRecord = (data: any) => {
+  return request({
+    url: "/v1/records/save",
     method: "POST",
     data
   })

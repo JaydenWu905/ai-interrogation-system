@@ -155,32 +155,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue"
+import { ref, onMounted, computed, reactive } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { startRecord, chatWithAI, speechToText, createRecord } from "@/api/record"
+import { startRecord, chatWithAI, speechToText, createRecord, saveRecord } from "@/api/record"
 
 const route = useRoute()
 const router = useRouter()
 
-let formData: Record<string, string> = {}
+const formData = reactive<Record<string, string>>({})
 
 const showSaveModal = ref(false)
 if (route.query.form) {
-  formData = JSON.parse(route.query.form as string)
+  Object.assign(formData, JSON.parse(route.query.form as string))
 }
 
-const recordText = ref(`
-询问时间：2026-04-19
-
-一、到场情况
-被询问人已到场，身份信息已核验，正在进行基础情况确认。
-
-二、询问内容
-请按时间顺序补充案发经过、接触人员、关键物证和后续行动描述。
-
-三、补充说明
-此区域可继续接入语音转写或 AI 自动整理后的笔录内容。
-`.trim())
+const recordText = ref("")
 
 // 对话列表，存储AI和用户的交替消息
 const chatList = ref<Array<{ role: 'ai' | 'user', content: string }>>([])
@@ -226,7 +215,11 @@ const initRecord = async () => {
   try {
     const response = await startRecord({
       reporter_name: formData.personName || "未知",
-      case_type: formData.caseType || "盗窃案"
+      case_type: formData.caseType || "盗窃案",
+      case_name: formData.caseName || "未立案",
+      person_type: formData.personType || "证人",
+      id_type: formData.idType || "身份证",
+      id_number: formData.idNumber || ""
     })
     recordId.value = response.data.record_id
     chatList.value.push({
@@ -285,7 +278,8 @@ const goHome = () => {
 // 确认保存笔录
 const confirmSave = async () => {
   try {
-    const response = await createRecord({
+    const response = await saveRecord({
+      record_id: recordId.value,
       title: formData.caseName || "AI智能笔录",
       content: recordText.value,
       reporter_name: formData.personName || "未知",
@@ -309,7 +303,7 @@ const transcribeAudio = async (audioFile: File) => {
   try {
     isProcessing.value = true
     const response = await speechToText(audioFile)
-    reporterInput.value = response.text
+    reporterInput.value = response.data.text
   } catch (error) {
     console.error("语音识别失败:", error)
   } finally {
@@ -338,13 +332,13 @@ const sendMessage = async () => {
     // 添加AI回复到聊天列表
     chatList.value.push({
       role: 'ai',
-      content: response.ai_reply
+      content: response.data.ai_reply
     })
-    recordText.value += `\nAI警官：${response.ai_reply}`
+    recordText.value += `\nAI警官：${response.data.ai_reply}`
 
     // 更新分析信息
-    if (response.extracted_info) {
-      const info = response.extracted_info
+    if (response.data.extracted_info) {
+      const info = response.data.extracted_info
       analysis.value = `案情：${info.案情 || '未提供'}\n发生时间：${info['发生时间'] || '未提供'}\n发生地点：${info['发生地点'] || '未提供'}\n嫌疑人信息：${info['嫌疑人信息'] || '未提供'}`
     }
 
