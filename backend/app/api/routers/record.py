@@ -10,6 +10,7 @@ from app.models import Record, RecordCreateInfo
 from app.database import get_session
 from app.api.deps import verify_token
 from app.schemas.record import RecordStartRequest, ChatRequest, ChatResponse
+from app.prompts import get_interrogation_prompt
 
 router = APIRouter(prefix="/records", tags=["AI笔录核心业务"])
 
@@ -20,6 +21,7 @@ STATUS_WITNESS_OPENING_3 = "证人_确认健康状况"
 STATUS_WITNESS_OPENING_4 = "证人_确认可接受询问"
 STATUS_WITNESS_OPENING_5 = "证人_采集个人信息"
 STATUS_AI_ASKING = "AI询问中"
+STATUS_MANUAL_INTERVENTION = "人工干预"
 STATUS_FINISHED = "笔录结束"
 
 OPENING_STEPS = {
@@ -77,6 +79,10 @@ def build_initial_extracted_info(req: RecordStartRequest) -> dict:
         "案情": req.case_name.strip(),
         "发生时间": "",
         "发生地点": "",
+        "案发经过": "",
+        "嫌疑人特征": "",
+        "作案工具及涉案物品": "",
+        "其他线索": "",
         "相关人员信息": ""
     }
 
@@ -95,42 +101,72 @@ def build_initial_context(req: RecordStartRequest) -> str:
 
 
 def handle_opening_flow(current_status: str, user_text: str) -> Tuple[str, str, bool]:
+    # ==========================================
+    # 状态 1：告知如实作证义务
+    # ==========================================
     if current_status == STATUS_WITNESS_OPENING_1:
-        if is_clear_yes(
-            user_text,
-            ["明白", "听明白", "清楚", "知道了", "理解了"],
-            ["不明白", "没明白", "没听明白", "不太明白", "不清楚", "不理解"]
-        ):
+        # 1. 乖乖配合，流程推进
+        if is_clear_yes(user_text, ["明白", "听明白", "清楚", "知道了", "理解了", "嗯", "对", "行"], ["不"]):
             return OPENING_STEPS[STATUS_WITNESS_OPENING_2], STATUS_WITNESS_OPENING_2, True
+        # 2. 明确拒绝/抗拒（非法回答）-> 严厉警告，状态原地锁定！
+        elif is_clear_no(user_text, ["不明白", "没明白", "不清楚", "不理解", "不知道", "不想", "不愿"], []):
+            return "【严厉提醒】作证是每个公民的法定义务。如果有意作伪证或者隐匿罪证，将面临三年以下有期徒刑等法律处罚。请明确回答，你现在听明白了吗？", current_status, True
+        # 3. 顾左右而言他（非法回答）-> 纠正话术，状态原地锁定！
+        else:
+            return "请你针对我的问题明确回答“明白”或“不明白”。根据法律规定，你应当如实提供证据、证言。你明白了吗？", current_status, True
 
+    # ==========================================
+    # 状态 2：告知书阅读确认
+    # ==========================================
     elif current_status == STATUS_WITNESS_OPENING_2:
-        if is_clear_yes(
-            user_text,
-            ["可以阅读", "我可以阅读", "看过了", "已阅读", "看完了", "看过", "读完了"],
-            ["不识字", "看不懂", "不会读", "你读给我听", "请你读给我听"]
-        ):
+        if is_clear_yes(user_text, ["可以", "能", "看过了", "已阅读", "读完了", "认字", "明白", "清楚", "嗯", "对"], ["不"]):
             return OPENING_STEPS[STATUS_WITNESS_OPENING_3], STATUS_WITNESS_OPENING_3, True
+        # 如果不识字，直接代为宣读，并且状态继续留在当前，等待确认听懂
+        elif is_clear_no(user_text, ["不识字", "看不懂", "不会读", "不认识", "你读", "读给我听"], []):
+            return "好的，那我现在向你宣读《证人诉讼权利义务告知书》的详细内容……（宣读完毕）。现在你清楚自己的权利和义务了吗？", current_status, True
+        else:
+            return "请明确回答。如果你能自己阅读，请仔细阅读；如果不识字或看不懂，请直接告诉我，我可以读给你听。", current_status, True
 
+    # ==========================================
+    # 状态 3：确认健康状况
+    # ==========================================
     elif current_status == STATUS_WITNESS_OPENING_3:
-        if is_clear_no(
-            user_text,
-            ["没有", "无", "没有这种情况", "没有严重疾病"],
-            ["但是", "不过", "头晕", "发烧", "不舒服", "有病", "有点"]
-        ):
+        # 注意：这里的肯定代表“没病”，推进流程
+        if contains_any(user_text, ["没有", "无", "没病", "挺好", "健康", "正常", "没"]):
             return OPENING_STEPS[STATUS_WITNESS_OPENING_4], STATUS_WITNESS_OPENING_4, True
+        # 这里的否定代表“有病”，给出医疗选项，并将状态推进到下一个去确认“能否接受询问”
+        elif contains_any(user_text, ["有", "头晕", "发烧", "心脏病", "不舒服", "病", "疼", "难受"]):
+            return "如果你目前身体极度不适，我们可以为你呼叫120医疗援助并暂停询问。请问你目前的身体状况，还能否坚持完成本次询问？", STATUS_WITNESS_OPENING_4, True
+        else:
+            return "请明确说明你是否有严重疾病或其他不适宜作证的情况？（如确无异常，请回答“没有”）", current_status, True
 
+    # ==========================================
+    # 状态 4：确认可接受询问
+    # ==========================================
     elif current_status == STATUS_WITNESS_OPENING_4:
-        if is_clear_yes(
-            user_text,
-            ["能够", "可以", "能", "接受询问", "可以接受询问"],
-            ["不能", "不可以", "不太能", "现在不行", "不接受", "头脑不清醒"]
-        ):
+        if is_clear_yes(user_text, ["能够", "可以", "能", "清醒", "没问题", "坚持", "嗯", "对"], ["不"]):
             return OPENING_STEPS[STATUS_WITNESS_OPENING_5], STATUS_WITNESS_OPENING_5, True
+        # 借故推脱/真醉酒 -> 严肃处理
+        elif contains_any(user_text, ["不能", "不可以", "不清醒", "喝醉", "头晕", "不行"]):
+            return "【严正告知】如果你现在故意借故推脱，属于不配合公安机关工作。如果你确实处于醉酒或精神恍惚状态，我们将依法约束至你清醒或带你进行医学鉴定。请最后确认，你现在能否接受正常询问？", current_status, True
+        else:
+            return "请明确回答“能”或“不能”。你现在头脑是否清醒，能够接受询问？", current_status, True
 
+    # ==========================================
+    # 状态 5：采集个人信息 (大模型交接点！)
+    # ==========================================
     elif current_status == STATUS_WITNESS_OPENING_5:
-        if contains_any(user_text, ["我叫", "姓名", "男", "女", "身份证", "联系方式", "住址"]):
-            return "好的，我先记录你的个人情况。如有遗漏，我会继续向你核实补充。", STATUS_AI_ASKING, True
+        # 拦截极其不配合的抗拒态度（非法回答）
+        if contains_any(user_text, ["不想说", "不愿", "保密", "不知道", "凭什么", "不告诉你", "隐私"]):
+            return "【法制教育】配合调查并如实提供真实身份信息，是公民法定义务。拒绝提供或提供虚假信息将承担相应法律后果。请如实陈述你的姓名、出生日期、住址及联系方式等信息。", current_status, True
+        
+        # 🌟 魔法交接点：只要他不拒绝，我们就认为他开始报个人信息了。
+        # 此时，我们返回 matched = False。
+        # 控制权将彻底移交给你的 Qwen 大模型！大模型会读取他的信息，提取出 JSON 字段，并极其丝滑地将状态推进到“AI询问中”。
+        else:
+            return "", current_status, False
 
+    # 兜底：不在开场状态的，统统交给大模型
     return "", current_status, False
 
 
@@ -211,62 +247,47 @@ async def chat_with_ai(
         ai_reply = rule_reply
         new_status = rule_status
     else:
-        system_prompt = f"""
-        你是一名经验丰富、程序意识严谨的中国公安民警，正在依法询问证人。当前询问阶段为：【{current_status}】。
-        你目前已经掌握并需要持续更新的信息是：{json.dumps(current_extracted_info, ensure_ascii=False)}
-
-        当前阶段可能包括：
-        1. 证人_告知如实作证义务
-        2. 证人_告知书阅读确认
-        3. 证人_确认健康状况
-        4. 证人_确认可接受询问
-        5. 证人_采集个人信息
-        6. AI询问中
-        7. 笔录结束
-
-        你的任务是仔细阅读我接下来发给你的完整聊天记录，然后：
-        1. 根据证人最新的话，给出你作为民警的下一句合理回应或追问。
-        2. 如果证人的回答不是常规的肯定/否定回答，你要结合当前阶段和完整上下文，给出自然、严谨、符合法律程序的回应，并判断是保持当前阶段、补充解释，还是推进到下一阶段。
-        3. 当处于“证人_采集个人信息”或“AI询问中”时，你要继续提取和更新这些字段：姓名、性别、民族、出生日期、住址、身份证号、联系方式、案情、发生时间、发生地点、相关人员信息。如果证人没有提到某项，就保持原值。
-        4. 如果证人明确表示没有更多内容，且关键信息已经基本完整，你可以将状态改为“笔录结束”，并输出固定结语：“{FIXED_CLOSING}”。
-
-        【极度重要】：你必须且只能回复一个合法的 JSON 数据包！不要包裹在 markdown 代码块里，直接输出 JSON！
-        必须严格包含以下三个字段：
-        {{
-            "ai_reply": "你对证人说的话",
-            "new_status": "案件的新状态",
-            "extracted_info": {{
-                "姓名": "...",
-                "性别": "...",
-                "民族": "...",
-                "出生日期": "...",
-                "住址": "...",
-                "身份证号": "...",
-                "联系方式": "...",
-                "案情": "...",
-                "发生时间": "...",
-                "发生地点": "...",
-                "相关人员信息": "..."
-            }}
-        }}
-        """
+        system_prompt = get_interrogation_prompt(current_status, current_extracted_info)
 
         try:
+            # 🚀 修正了重复的行，并且确保了参数名绝对是 messages
             response = await client.chat.completions.create(
                 model=LLM_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"以下是完整的聊天记录，请分析并给出下一步回应：\n{db_record.content}"}
                 ],
-                temperature=0.3
+                temperature=0.1,
+                response_format={"type": "json_object"}, 
+                max_tokens=800 
             )
 
             ai_response_text = response.choices[0].message.content
-            result_data = json.loads(ai_response_text)
+            print(f"🕵️‍♂️ 大模型原始回复内容是：\n{ai_response_text}\n") # 加上这句方便以后排错
 
-            ai_reply = result_data.get("ai_reply", "抱歉，系统处理出现异常。")
-            new_status = result_data.get("new_status", current_status)
-            new_extracted_info = result_data.get("extracted_info", current_extracted_info)
+            # 🚀 核心扒衣魔法：寻找第一个 '{' 和最后一个 '}' 之间的所有内容
+            start_idx = ai_response_text.find('{')
+            end_idx = ai_response_text.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1:
+                clean_json_str = ai_response_text[start_idx:end_idx+1]
+                result_data = json.loads(clean_json_str)
+            else:
+                # 如果大模型彻底胡言乱语没返回 JSON，给个默认兜底
+                print("❌ 警告：大模型没有返回有效的 JSON 结构！")
+                result_data = {
+                    "ai_reply": ai_response_text, # 把它说的话直接原样输出
+                    "new_status": current_status,
+                    "extracted_info": current_extracted_info
+                }
+
+            # 🚀 柔性容错：不管它是叫 ai_reply 还是 reply，甚至是 text，我们统统接住！
+            ai_reply = result_data.get("ai_reply") or result_data.get("reply") or result_data.get("text", "（大模型正在思考案件，请稍候）")
+            
+            new_status = result_data.get("new_status") or result_data.get("status", current_status)
+            
+            # 如果大模型忘了返回 extracted_info，我们就用上一次的旧数据，防止清空
+            new_extracted_info = result_data.get("extracted_info") or current_extracted_info
 
         except Exception as e:
             print(f"大模型调用失败: {e}")
