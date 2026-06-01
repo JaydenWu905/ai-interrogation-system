@@ -3,7 +3,7 @@
     <header class="topbar">
       <div>
         <span class="kicker">案件协同工作台</span>
-        <h1>执法业务协同平台</h1>
+        <h1>欢迎使用快办系统</h1>
         <p>围绕接待、案件、笔录与智能分析组织核心工作流，帮助值班人员快速进入任务。</p>
       </div>
 
@@ -211,7 +211,10 @@ const goLogin = () => {
 
 .topbar {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  text-align: center;
+  justify-content: space-evenly;
+  justify-content: space-evenly;
   gap: 24px;
   padding: 28px;
 }
@@ -326,7 +329,10 @@ const goLogin = () => {
 
 .section-head {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  text-align: center;
+  justify-content: space-evenly;
+  justify-content: space-evenly;
   gap: 16px;
   align-items: center;
   margin-bottom: 22px;
@@ -351,7 +357,9 @@ const goLogin = () => {
   border: 1px solid rgba(114, 136, 177, 0.16);
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  text-align: center;
+  justify-content: space-evenly;
   cursor: pointer;
 }
 
@@ -424,7 +432,10 @@ const goLogin = () => {
 
 .queue-item {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  text-align: center;
+  justify-content: space-evenly;
+  justify-content: space-evenly;
   gap: 14px;
   padding: 18px;
   border-radius: 18px;
