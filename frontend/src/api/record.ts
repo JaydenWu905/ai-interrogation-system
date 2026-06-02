@@ -35,6 +35,26 @@ export const chatWithAI = (data: {
   })
 }
 
+// 语音输入并自动进入 AI 对话
+export const chatWithAudio = (data: {
+  record_id: number
+  file: File
+}) => {
+  const formData = new FormData()
+  formData.append("record_id", String(data.record_id))
+  formData.append("file", data.file)
+
+  return request({
+    url: "/v1/records/chat-audio",
+    method: "POST",
+    data: formData,
+    timeout: 120000,
+    headers: {
+      "Content-Type": "multipart/form-data"
+    }
+  })
+}
+
 // 语音转文字
 export const speechToText = (file: File) => {
   const formData = new FormData()
@@ -46,5 +66,23 @@ export const speechToText = (file: File) => {
     headers: {
       "Content-Type": "multipart/form-data"
     }
+  })
+}
+
+// 获取格式化笔录数据（预览用）
+export const getTranscript = (recordId: number) => {
+  return request({
+    url: `/v1/records/${recordId}/transcript`,
+    method: "GET"
+  })
+}
+
+// 导出 Word 笔录
+export const exportRecordWord = (recordId: number) => {
+  return request({
+    url: `/v1/records/${recordId}/export`,
+    method: "GET",
+    responseType: "blob",
+    timeout: 120000
   })
 }
