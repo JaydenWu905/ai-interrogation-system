@@ -10,18 +10,7 @@
         </p>
       </div>
 
-      <div class="top-actions">
-        <label class="voice-control">
-          <span>音色</span>
-          <select v-model="selectedVoiceURI" :disabled="voiceOptions.length === 0" @change="saveSelectedVoice">
-            <option value="">自动</option>
-            <option v-for="voice in voiceOptions" :key="voice.voiceURI" :value="voice.voiceURI">
-              {{ voice.name }} ({{ voice.lang }})
-            </option>
-          </select>
-        </label>
-      </div>
-    </header>
+      </header>
 
     <main class="record-layout">
       <section class="record-editor panel">
@@ -33,7 +22,70 @@
           <span class="state-pill">自动保存中</span>
         </div>
 
-        <textarea v-model="recordText" />
+        <div class="transcript-content" v-if="transcriptData">
+          <div class="transcript-title">询 问 笔 录</div>
+
+          <section class="transcript-section">
+            <div class="transcript-info-row"><span>时    间：</span><strong>{{ transcriptData.header.record_time }}</strong></div>
+            <div class="transcript-info-row"><span>地    点：</span><strong>{{ transcriptData.header.record_location }}</strong></div>
+            <div class="transcript-info-row"><span>询 问 人：</span><strong>{{ transcriptData.header.interrogator }}</strong></div>
+            <div class="transcript-info-row"><span>记 录 人：</span><strong>{{ transcriptData.header.recorder }}</strong></div>
+            <div class="transcript-info-row"><span>案件名称：</span><strong>{{ transcriptData.header.case_name }}</strong></div>
+          </section>
+
+          <section class="transcript-section">
+            <h4>被询问人基本信息</h4>
+            <table class="transcript-table">
+              <tbody>
+                <tr>
+                  <td>姓名</td>
+                  <td>{{ transcriptData.person_info.姓名 }}</td>
+                  <td>性别</td>
+                  <td>{{ transcriptData.person_info.性别 }}</td>
+                </tr>
+                <tr>
+                  <td>民族</td>
+                  <td>{{ transcriptData.person_info.民族 }}</td>
+                  <td>出生日期</td>
+                  <td>{{ transcriptData.person_info.出生日期 }}</td>
+                </tr>
+                <tr>
+                  <td>身份证号</td>
+                  <td>{{ transcriptData.person_info.身份证号 }}</td>
+                  <td>联系方式</td>
+                  <td>{{ transcriptData.person_info.联系方式 }}</td>
+                </tr>
+                <tr>
+                  <td>住址</td>
+                  <td colspan="3">{{ transcriptData.person_info.住址 }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="transcript-section">
+            <h4>案件要素摘要</h4>
+            <div class="case-info-list">
+              <div v-for="(value, key) in transcriptData.case_info" :key="key" class="case-info-item" v-show="value && value !== '未知'">
+                <span>【{{ key }}】</span>
+                <strong>{{ value }}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="transcript-section">
+            <h4>询问过程</h4>
+            <div class="qa-record">
+              <div v-for="(pair, index) in transcriptData.qa_pairs" :key="index" class="qa-pair">
+                <p v-if="pair.question"><strong>问：</strong>{{ pair.question }}</p>
+                <p v-if="pair.answer"><strong>答：</strong>{{ pair.answer }}</p>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="transcript-content transcript-loading" v-else>
+          <p>正在加载笔录数据...</p>
+        </div>
 
         <div class="record-window-actions">
           <button class="soft-btn" @click="goHome">回到主页面</button>
@@ -274,9 +326,6 @@ if (route.query.form) {
   Object.assign(formData, JSON.parse(route.query.form as string))
 }
 
-const recordText = ref("")
-const respondentLabel = computed(() => formData.personType?.trim() || "被询问人")
-
 // 对话列表，存储AI和用户的交替消息
 const chatList = ref<Array<{ role: 'ai' | 'user', content: string }>>([])
 
@@ -323,80 +372,122 @@ const isAutoMode = ref(true)
 const isPaused = ref(false)
 const shouldProcessRecording = ref(true)
 const recordingMode = ref<'auto' | 'manual'>('manual')
-const voiceOptions = ref<SpeechSynthesisVoice[]>([])
-const selectedVoiceURI = ref(localStorage.getItem("ai_voice_uri") || "")
 
 const silenceThreshold = 0.018
 const silenceDurationMs = 1600
 const minRecordingMs = 900
 const maxRecordingMs = 30000
 
+// ✅ 准确的男声关键词（移除 tingting, yaoyao，补充常见的微软/苹果男声）
 const preferredMaleVoiceKeywords = [
-  "yunxi",
-  "yunjian",
-  "yunyang",
-  "kangkang",
-  "male",
+  "yunxi",    // 微软云希 (男)
+  "yunjian",  // 微软云健 (男)
+  "yunyang",  // 微软云扬 (男)
+  "yunze",    // 微软云泽 (男)
+  "kankan",   // 苹果 Kankan (男)
+  "male", 
   "男"
+]
+
+// ✅ 明确的女性语音黑名单（防止回退时选中女声）
+const femaleVoiceBlacklist = [
+  "xiaoxiao", // 微软晓晓
+  "yaoyao",   // 微软瑶瑶
+  "huihui",   // 微软慧慧
+  "tingting", // 苹果婷婷
+  "meijia",   // 苹果美佳
+  "zhiyu",    // 微软智语
+  "female",
+  "女",
+  "kangkang" 
 ]
 
 const isChineseVoice = (voice: SpeechSynthesisVoice) => voice.lang.toLowerCase().startsWith("zh")
 
+// 存储找到的男声
+let cachedMaleVoice: SpeechSynthesisVoice | null = null
+let voiceLoadPromise: Promise<SpeechSynthesisVoice | null> | null = null
+
 const findPreferredMaleVoice = (voices: SpeechSynthesisVoice[]) => {
-  return voices.find((voice) => {
+  // 1. 过滤出所有的中文语音
+  const chineseVoices = voices.filter(isChineseVoice)
+  console.log("🎤 可用的中文语音列表：", chineseVoices.map(v => v.name))
+
+  if (chineseVoices.length === 0) return null
+
+  // 2. 排除明确在黑名单里的女声
+  const potentialMaleVoices = chineseVoices.filter((voice) => {
     const voiceName = voice.name.toLowerCase()
-    return isChineseVoice(voice) && preferredMaleVoiceKeywords.some((keyword) => voiceName.includes(keyword))
+    return !femaleVoiceBlacklist.some(blackKey => voiceName.includes(blackKey))
   })
+
+  // 3. 优先在未被排除的语音中，寻找确切的男声关键词匹配
+  const exactMaleVoice = potentialMaleVoices.find((voice) => {
+    const voiceName = voice.name.toLowerCase()
+    return preferredMaleVoiceKeywords.some((keyword) => voiceName.includes(keyword))
+  })
+  
+  if (exactMaleVoice) {
+    console.log("🎯 找到精确男声：", exactMaleVoice.name)
+    return exactMaleVoice
+  }
+
+  // 4. 如果没有明确是男声的语音，尝试从剩下的非女声中挑选微软或谷歌的语音
+  const fallbackVoice = potentialMaleVoices.find((voice) => {
+    const voiceName = voice.name.toLowerCase()
+    return voiceName.includes("microsoft") || voiceName.includes("google")
+  })
+
+  if (fallbackVoice) {
+    console.log("⚠️ 未找到明确男声，使用备选非女声：", fallbackVoice.name)
+    return fallbackVoice
+  }
+
+  // 5. 最后的保底逻辑：
+  // 哪怕找不到男声，也尽量拿一个不是“知名女声”的语音。如果全都是知名女声，只能被迫返回第一个中文语音。
+  const finalVoice = potentialMaleVoices[0] || chineseVoices[0]
+  console.log("⚠️ 只能使用默认保底语音：", finalVoice.name)
+  return finalVoice
 }
 
-const loadVoiceOptions = () => {
-  if (!("speechSynthesis" in window)) return null
+const loadMaleVoiceAsync = (): Promise<SpeechSynthesisVoice | null> => {
+  if (!("speechSynthesis" in window)) return Promise.resolve(null)
 
   const voices = window.speechSynthesis.getVoices()
-  voiceOptions.value = voices
-
-  if (selectedVoiceURI.value && !voices.some((voice) => voice.voiceURI === selectedVoiceURI.value)) {
-    selectedVoiceURI.value = ""
-    localStorage.removeItem("ai_voice_uri")
+  if (voices.length > 0) {
+    cachedMaleVoice = findPreferredMaleVoice(voices)
+    return Promise.resolve(cachedMaleVoice)
   }
 
-  if (!selectedVoiceURI.value) {
-    const preferredVoice = findPreferredMaleVoice(voices)
-    if (preferredVoice) {
-      selectedVoiceURI.value = preferredVoice.voiceURI
-      localStorage.setItem("ai_voice_uri", preferredVoice.voiceURI)
+  // 如果语音列表还没加载，等待 voiceschanged 事件
+  if (voiceLoadPromise) return voiceLoadPromise
+
+  voiceLoadPromise = new Promise((resolve) => {
+    const handler = () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", handler)
+      const loadedVoices = window.speechSynthesis.getVoices()
+      cachedMaleVoice = findPreferredMaleVoice(loadedVoices)
+      voiceLoadPromise = null
+      resolve(cachedMaleVoice)
     }
-  }
-}
+    window.speechSynthesis.addEventListener("voiceschanged", handler)
 
-const saveSelectedVoice = () => {
-  if (selectedVoiceURI.value) {
-    localStorage.setItem("ai_voice_uri", selectedVoiceURI.value)
-  } else {
-    localStorage.removeItem("ai_voice_uri")
-  }
-}
+    // 超时处理
+    setTimeout(() => {
+      window.speechSynthesis.removeEventListener("voiceschanged", handler)
+      voiceLoadPromise = null
+      resolve(null)
+    }, 3000)
+  })
 
-const getAiVoice = () => {
-  if (!("speechSynthesis" in window)) return null
-
-  const voices = voiceOptions.value.length > 0 ? voiceOptions.value : window.speechSynthesis.getVoices()
-  const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI.value)
-  if (selectedVoice) return selectedVoice
-
-  return (
-    findPreferredMaleVoice(voices) ||
-    voices.find((voice) => voice.lang.toLowerCase() === "zh-cn") ||
-    voices.find(isChineseVoice) ||
-    null
-  )
+  return voiceLoadPromise
 }
 
 const shouldContinueAutoConversation = (status?: string) => {
   return isAutoMode.value && !isPaused.value && status !== "笔录结束" && status !== "人工干预"
 }
 
-const speakAiQuestion = (text?: string, nextStatus?: string) => {
+const speakAiQuestion = async (text?: string, nextStatus?: string) => {
   if (!text?.trim()) return
   if (!("speechSynthesis" in window)) {
     if (shouldContinueAutoConversation(nextStatus)) {
@@ -408,14 +499,20 @@ const speakAiQuestion = (text?: string, nextStatus?: string) => {
   window.speechSynthesis.cancel()
   isAiSpeaking.value = true
 
+  // 异步加载语音，确保语音列表已准备好
+  const voice = await loadMaleVoiceAsync()
+
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.lang = "zh-CN"
-  utterance.rate = 1
-  utterance.pitch = 1
+  utterance.rate = 0.9  // 稍慢一点，更稳重
+  utterance.pitch = 0.75  // 进一步降低音调，更像男声
 
-  const voice = getAiVoice()
   if (voice) {
     utterance.voice = voice
+    utterance.lang = voice.lang || "zh-CN"
+    console.log("🎯 实际使用的语音：", voice.name, "语言：", voice.lang)
+  } else {
+    console.warn("⚠️ 未找到合适的中文语音，使用默认语音")
   }
 
   utterance.onend = () => {
@@ -425,11 +522,17 @@ const speakAiQuestion = (text?: string, nextStatus?: string) => {
     }
   }
 
-  utterance.onerror = () => {
+  utterance.onerror = (event) => {
+    console.error("语音合成错误：", event.error)
     isAiSpeaking.value = false
   }
 
-  window.speechSynthesis.speak(utterance)
+  // 使用较长的延迟确保语音设置生效
+  setTimeout(() => {
+    // Chrome 浏览器的一个 bug：需要在 speak 之前先 resume
+    window.speechSynthesis.resume()
+    window.speechSynthesis.speak(utterance)
+  }, 100)
 }
 
 const stopAiSpeech = () => {
@@ -455,7 +558,8 @@ const initRecord = async () => {
       role: 'ai',
       content: response.data.ai_reply
     })
-    recordText.value += `\nAI警官：${response.data.ai_reply}`
+    // 初始化后获取笔录数据
+    fetchTranscript()
     speakAiQuestion(response.data.ai_reply, response.data.status)
   } catch (error) {
     console.error("初始化笔录失败:", error)
@@ -670,16 +774,30 @@ const updateAnalysis = (extractedInfo: Record<string, string>) => {
   analysis.value = `案情：${extractedInfo.案情 || '未提供'}\n发生时间：${extractedInfo['发生时间'] || '未提供'}\n发生地点：${extractedInfo['发生地点'] || '未提供'}\n相关人员信息：${extractedInfo['相关人员信息'] || '未提供'}`
 }
 
+// 获取格式化笔录数据
+const fetchTranscript = async () => {
+  if (!recordId.value) return
+
+  try {
+    const response: any = await getTranscript(recordId.value)
+    transcriptData.value = response.data
+  } catch (error) {
+    console.error("获取笔录数据失败:", error)
+  }
+}
+
 const appendAiResponse = (response: any) => {
   chatList.value.push({
     role: 'ai',
     content: response.ai_reply
   })
-  recordText.value += `\nAI警官：${response.ai_reply}`
 
   if (response.extracted_info) {
     updateAnalysis(response.extracted_info)
   }
+
+  // 刷新笔录数据
+  fetchTranscript()
 
   speakAiQuestion(response.ai_reply, response.status)
 }
@@ -702,7 +820,6 @@ const sendAudioMessage = async (audioFile: File) => {
       role: 'user',
       content: transcript
     })
-    recordText.value += `\n${respondentLabel.value}：${transcript}`
     reporterInput.value = ""
 
     appendAiResponse(response)
@@ -724,7 +841,6 @@ const sendMessage = async () => {
     role: 'user',
     content: messageText
   })
-  recordText.value += `\n${respondentLabel.value}：${messageText}`
 
   try {
     isProcessing.value = true
@@ -746,18 +862,29 @@ const sendMessage = async () => {
 
 // 生命周期钩子，组件挂载时初始化笔录
 onMounted(() => {
+  // 预加载语音列表
   if ("speechSynthesis" in window) {
-    loadVoiceOptions()
-    window.speechSynthesis.addEventListener("voiceschanged", loadVoiceOptions)
+    // 某些浏览器需要等待 voiceschanged 事件
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0) {
+        cachedMaleVoice = findPreferredMaleVoice(voices)
+        console.log("语音列表已加载，共", voices.length, "个语音")
+        console.log("选择的男声：", cachedMaleVoice?.name || "未找到")
+      }
+    }
+
+    // 立即尝试加载
+    loadVoices()
+
+    // 监听语音列表变化（某些浏览器异步加载）
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices)
   }
 
   initRecord()
 })
 
 onBeforeUnmount(() => {
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.removeEventListener("voiceschanged", loadVoiceOptions)
-  }
   stopRecording(false)
   cleanupRecordingResources()
   stopAiSpeech()
@@ -846,32 +973,6 @@ const finish = () => console.log("结束")
   border-top: 1px solid rgba(114, 136, 177, 0.14);
 }
 
-.voice-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 220px;
-  color: var(--text-soft);
-  font-size: 13px;
-}
-
-.voice-control select {
-  height: 46px;
-  min-width: 170px;
-  max-width: 260px;
-  border: 1px solid rgba(114, 136, 177, 0.18);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text-main);
-  padding: 0 12px;
-}
-
-.voice-control select:focus {
-  outline: none;
-  border-color: rgba(29, 111, 216, 0.5);
-  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
-}
-
 .soft-btn,
 .primary-btn {
   height: 46px;
@@ -944,7 +1045,7 @@ const finish = () => console.log("结束")
   font-size: 12px;
 }
 
-.record-editor textarea {
+.transcript-content {
   width: 100%;
   min-height: 560px;
   padding: 22px;
@@ -953,12 +1054,96 @@ const finish = () => console.log("结束")
   background: rgba(255, 255, 255, 0.96);
   color: var(--text-main);
   line-height: 1.8;
+  overflow-y: auto;
 }
 
-.record-editor textarea:focus {
-  outline: none;
-  border-color: rgba(29, 111, 216, 0.5);
-  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+.transcript-content.transcript-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transcript-content.transcript-loading p {
+  color: var(--text-soft);
+}
+
+.transcript-title {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 24px;
+}
+
+.transcript-section {
+  margin-bottom: 22px;
+}
+
+.transcript-section h4 {
+  margin: 0 0 12px;
+  color: var(--text-main);
+}
+
+.transcript-info-row,
+.case-info-item {
+  display: flex;
+  gap: 12px;
+  line-height: 1.8;
+}
+
+.transcript-info-row span,
+.case-info-item span {
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+
+.transcript-info-row strong,
+.case-info-item strong {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.transcript-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.transcript-table td {
+  border: 1px solid rgba(114, 136, 177, 0.22);
+  padding: 10px 12px;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.transcript-table td:nth-child(odd) {
+  width: 120px;
+  background: rgba(29, 111, 216, 0.06);
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.case-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qa-record {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.qa-pair {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(114, 136, 177, 0.12);
+}
+
+.qa-pair p {
+  margin: 0 0 8px;
+  line-height: 1.8;
+  color: var(--text-main);
 }
 
 .record-side {
