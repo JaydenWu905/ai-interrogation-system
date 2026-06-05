@@ -23,3 +23,7 @@ class ChatResponse(BaseModel):
     ai_reply: str = Field(..., description="AI下一步要播报的语音文字")
     status: str = Field(..., description="当前所处阶段：等待确认/AI询问中/笔录结束")
     extracted_info: Dict[str, str] = Field(..., description="AI实时提取的关键信息")
+
+
+class ChatAudioResponse(ChatResponse):
+    transcript: str = Field(..., description="语音识别得到的被询问人文本")
