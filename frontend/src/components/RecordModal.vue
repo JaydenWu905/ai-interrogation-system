@@ -86,6 +86,10 @@ import { useRouter } from "vue-router"
 
 const router = useRouter()
 
+const props = withDefaults(defineProps<{ mode?: string }>(), {
+  mode: "inquiry",
+})
+
 const form = ref({
   caseType: "故意伤害案",
   caseName: "未立案",
@@ -107,6 +111,7 @@ const submit = async () => {
       path: "/record",
       query: {
         form: JSON.stringify(form.value),
+        mode: props.mode,
       },
     })
   } catch (err) {

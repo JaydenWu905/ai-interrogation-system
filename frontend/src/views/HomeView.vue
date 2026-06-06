@@ -36,10 +36,10 @@
 
         <div class="feature-grid">
           <article
-            v-for="feature in features"
+            v-for="(feature, index) in features"
             :key="feature.title"
             class="feature-card"
-            @click="openModal"
+            @click="openModal(featureModes[index])"
           >
             <div class="feature-icon">{{ feature.icon }}</div>
             <div class="feature-copy">
@@ -102,7 +102,7 @@
     </section>
   </div>
 
-  <RecordModal v-if="showModal" @close="closeModal" />
+  <RecordModal v-if="showModal" :mode="selectedMode" @close="closeModal" />
 </template>
 
 <script setup lang="ts">
@@ -114,6 +114,7 @@ const router = useRouter()
 const time = ref("")
 const user = ref<any>(null)
 const showModal = ref(false)
+const selectedMode = ref("inquiry")
 
 const features = [
   { icon: "询", title: "快速询问", description: "面向初始接待和基础情况采集，适合快速启动流程。", tag: "常用" },
@@ -121,6 +122,7 @@ const features = [
   { icon: "录", title: "常规笔录", description: "用于规范化笔录整理，便于打印、复核与归档。", tag: "标准化" },
   { icon: "案", title: "案件管理", description: "聚合案件名称、涉案人员与流程节点，适合后续扩展。", tag: "协同" },
 ]
+const featureModes = ["inquiry", "interrogate", "recording", "case"]
 
 const stats = [
   { value: "08", label: "待处理笔录" },
@@ -150,7 +152,8 @@ const pendingList = [
   },
 ]
 
-const openModal = () => {
+const openModal = (mode: string | Event = "inquiry") => {
+  selectedMode.value = typeof mode === "string" ? mode : "inquiry"
   showModal.value = true
 }
 

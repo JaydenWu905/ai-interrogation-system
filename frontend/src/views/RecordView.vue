@@ -12,7 +12,98 @@
 
       </header>
 
-    <main class="record-layout">
+    <main v-if="isRecordOnlyMode" class="record-only-layout">
+      <section class="record-editor panel record-only-editor">
+        <div class="section-head">
+          <div>
+            <span class="section-kicker">录音笔录</span>
+            <h2>语音转文字笔录</h2>
+          </div>
+          <span class="state-pill">{{ isProcessing ? "转写中" : isRecording ? "录音中" : "可编辑" }}</span>
+        </div>
+
+        <div class="record-context-grid">
+          <div>
+            <span>案件名称</span>
+            <strong>{{ formData.caseName || "未填写" }}</strong>
+          </div>
+          <div>
+            <span>案件类别</span>
+            <strong>{{ formData.caseType || "未填写" }}</strong>
+          </div>
+          <div>
+            <span>人员姓名</span>
+            <strong>{{ formData.personName || "未填写" }}</strong>
+          </div>
+          <div>
+            <span>人员身份</span>
+            <strong>{{ formData.personType || "未填写" }}</strong>
+          </div>
+        </div>
+
+        <textarea
+          v-model="recordText"
+          class="record-textarea"
+          placeholder="点击开始录音后，语音转文字内容会直接进入这里；也可以在框内实时修改、补充和整理。"
+        ></textarea>
+      </section>
+
+      <aside class="record-side record-only-side">
+        <section class="panel recording-card">
+          <div class="section-head compact">
+            <div>
+              <span class="section-kicker">语音录制</span>
+              <h2>转文字</h2>
+            </div>
+          </div>
+
+          <button
+            class="record-btn record-only-record-btn"
+            :class="{ recording: isRecording }"
+            @click="toggleRecording"
+            :disabled="isProcessing"
+          >
+            {{ isRecording ? "停止录音" : isProcessing ? "转写中..." : "开始录音" }}
+          </button>
+
+          <p class="recording-status">
+            {{ isRecording ? "正在采集语音，停止后自动转文字。" : "转写结果会追加到左侧笔录框。" }}
+          </p>
+        </section>
+
+        <section class="panel info-panel">
+          <div class="section-head compact">
+            <div>
+              <span class="section-kicker">人员信息</span>
+              <h2>当前对象</h2>
+            </div>
+          </div>
+
+          <dl class="info-list">
+            <div>
+              <dt>证件类型</dt>
+              <dd>{{ formData.idType || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>证件号码</dt>
+              <dd>{{ formData.idNumber || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>案件类别</dt>
+              <dd>{{ formData.caseType || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>案件名称</dt>
+              <dd>{{ formData.caseName || "未填写" }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <button class="soft-btn" @click="goHome">回到主页面</button>
+      </aside>
+    </main>
+
+    <main v-else class="record-layout">
       <section class="record-editor panel">
         <div class="section-head">
           <div>
@@ -171,7 +262,7 @@
       </aside>
     </main>
 
-    <section class="analysis-panel panel">
+    <section v-if="!isRecordOnlyMode" class="analysis-panel panel">
       <div class="section-head compact">
         <div>
           <span class="section-kicker">AI 分析</span>
@@ -318,10 +409,12 @@ const route = useRoute()
 const router = useRouter()
 
 const formData = reactive<Record<string, string>>({})
+const isRecordOnlyMode = computed(() => route.query.mode === "recording")
 
 const showSaveModal = ref(false)
 const showTranscriptModal = ref(false)
 const transcriptData = ref<any>(null)
+const recordText = ref("")
 if (route.query.form) {
   Object.assign(formData, JSON.parse(route.query.form as string))
 }
@@ -762,7 +855,16 @@ const transcribeAudio = async (audioFile: File) => {
   try {
     isProcessing.value = true
     const response: any = await speechToText(audioFile)
-    reporterInput.value = response.text
+    const transcript = (response?.text || response?.data?.text || response?.transcript || "").trim()
+    if (isRecordOnlyMode.value) {
+      if (transcript) {
+        recordText.value = recordText.value
+          ? `${recordText.value.trimEnd()}\n${transcript}`
+          : transcript
+      }
+      return
+    }
+    reporterInput.value = transcript
   } catch (error) {
     console.error("语音识别失败:", error)
   } finally {
@@ -881,7 +983,9 @@ onMounted(() => {
     window.speechSynthesis.addEventListener("voiceschanged", loadVoices)
   }
 
-  initRecord()
+  if (!isRecordOnlyMode.value) {
+    initRecord()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -995,6 +1099,86 @@ const finish = () => console.log("结束")
   grid-template-columns: minmax(0, 1.2fr) 420px;
   gap: 20px;
   margin-top: 20px;
+}
+
+.record-only-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  margin-top: 20px;
+  align-items: start;
+}
+
+.record-only-editor {
+  min-height: calc(100vh - 190px);
+}
+
+.record-context-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.record-context-grid div {
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(114, 136, 177, 0.14);
+}
+
+.record-context-grid span {
+  display: block;
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.record-context-grid strong {
+  display: block;
+  color: var(--text-main);
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.record-textarea {
+  width: 100%;
+  min-height: calc(100vh - 360px);
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(114, 136, 177, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  line-height: 1.9;
+  resize: vertical;
+}
+
+.record-textarea:focus {
+  outline: none;
+  border-color: rgba(29, 111, 216, 0.5);
+  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+}
+
+.record-only-side {
+  position: sticky;
+  top: 20px;
+}
+
+.recording-card {
+  padding: 24px;
+}
+
+.record-only-record-btn {
+  width: 100%;
+  height: 64px;
+  font-size: 16px;
+}
+
+.recording-status {
+  margin: 14px 0 0;
+  color: var(--text-soft);
+  line-height: 1.7;
 }
 
 .record-editor,
@@ -1526,12 +1710,17 @@ const finish = () => console.log("结束")
 
 @media (max-width: 1100px) {
   .record-layout,
+  .record-only-layout,
   .analysis-grid {
     grid-template-columns: 1fr;
   }
 
   .record-top {
     flex-direction: column;
+  }
+
+  .record-only-side {
+    position: static;
   }
 }
 
@@ -1547,6 +1736,10 @@ const finish = () => console.log("结束")
 
   .record-window-actions {
     justify-content: flex-start;
+  }
+
+  .record-context-grid {
+    grid-template-columns: 1fr;
   }
 
   .modal-header,
