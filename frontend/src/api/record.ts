@@ -86,3 +86,46 @@ export const exportRecordWord = (recordId: number) => {
     timeout: 120000
   })
 }
+
+// 提交电子签名
+export const submitSignature = (data: {
+  record_id: number
+  signer_type: string
+  signer_name: string
+  signature_data: string
+}) => {
+  return request({
+    url: `/v1/records/${data.record_id}/signature`,
+    method: "POST",
+    data
+  })
+}
+
+// 获取笔录的所有签名
+export const getSignatures = (recordId: number) => {
+  return request({
+    url: `/v1/records/${recordId}/signatures`,
+    method: "GET"
+  })
+}
+
+// 获取指定类型的签名图片
+export const getSignatureImage = (recordId: number, signerType: string) => {
+  return request({
+    url: `/v1/records/${recordId}/signature/${encodeURIComponent(signerType)}`,
+    method: "GET"
+  })
+}
+
+// 更新笔录内容（手动编辑）
+export const updateTranscript = (recordId: number, data: {
+  person_info: Record<string, string>
+  case_info: Record<string, string>
+  qa_pairs: Array<{ question: string; answer: string }>
+}) => {
+  return request({
+    url: `/v1/records/${recordId}/transcript`,
+    method: "PUT",
+    data
+  })
+}

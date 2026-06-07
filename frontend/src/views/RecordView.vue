@@ -10,30 +10,215 @@
         </p>
       </div>
 
-      <div class="top-actions">
-        <label class="voice-control">
-          <span>音色</span>
-          <select v-model="selectedVoiceURI" :disabled="voiceOptions.length === 0" @change="saveSelectedVoice">
-            <option value="">自动</option>
-            <option v-for="voice in voiceOptions" :key="voice.voiceURI" :value="voice.voiceURI">
-              {{ voice.name }} ({{ voice.lang }})
-            </option>
-          </select>
-        </label>
-      </div>
-    </header>
+      </header>
 
-    <main class="record-layout">
+    <main v-if="isRecordOnlyMode" class="record-only-layout">
+      <section class="record-editor panel record-only-editor">
+        <div class="section-head">
+          <div>
+            <span class="section-kicker">录音笔录</span>
+            <h2>语音转文字笔录</h2>
+          </div>
+          <span class="state-pill">{{ isProcessing ? "转写中" : isRecording ? "录音中" : "可编辑" }}</span>
+        </div>
+
+        <div class="record-context-grid">
+          <div>
+            <span>案件名称</span>
+            <strong>{{ formData.caseName || "未填写" }}</strong>
+          </div>
+          <div>
+            <span>案件类别</span>
+            <strong>{{ formData.caseType || "未填写" }}</strong>
+          </div>
+          <div>
+            <span>人员姓名</span>
+            <strong>{{ formData.personName || "未填写" }}</strong>
+          </div>
+          <div>
+            <span>人员身份</span>
+            <strong>{{ formData.personType || "未填写" }}</strong>
+          </div>
+        </div>
+
+        <textarea
+          v-model="recordText"
+          class="record-textarea"
+          placeholder="点击开始录音后，语音转文字内容会直接进入这里；也可以在框内实时修改、补充和整理。"
+        ></textarea>
+      </section>
+
+      <aside class="record-side record-only-side">
+        <section class="panel recording-card">
+          <div class="section-head compact">
+            <div>
+              <span class="section-kicker">语音录制</span>
+              <h2>转文字</h2>
+            </div>
+          </div>
+
+          <button
+            class="record-btn record-only-record-btn"
+            :class="{ recording: isRecording }"
+            @click="toggleRecording"
+            :disabled="isProcessing"
+          >
+            {{ isRecording ? "停止录音" : isProcessing ? "转写中..." : "开始录音" }}
+          </button>
+
+          <p class="recording-status">
+            {{ isRecording ? "正在采集语音，停止后自动转文字。" : "转写结果会追加到左侧笔录框。" }}
+          </p>
+        </section>
+
+        <section class="panel info-panel">
+          <div class="section-head compact">
+            <div>
+              <span class="section-kicker">人员信息</span>
+              <h2>当前对象</h2>
+            </div>
+          </div>
+
+          <dl class="info-list">
+            <div>
+              <dt>证件类型</dt>
+              <dd>{{ formData.idType || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>证件号码</dt>
+              <dd>{{ formData.idNumber || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>案件类别</dt>
+              <dd>{{ formData.caseType || "未填写" }}</dd>
+            </div>
+            <div>
+              <dt>案件名称</dt>
+              <dd>{{ formData.caseName || "未填写" }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <button class="soft-btn" @click="goHome">回到主页面</button>
+      </aside>
+    </main>
+
+    <main v-else class="record-layout">
       <section class="record-editor panel">
         <div class="section-head">
           <div>
             <span class="section-kicker">主记录区</span>
             <h2>询问笔录</h2>
           </div>
-          <span class="state-pill">自动保存中</span>
+          <div class="header-actions">
+            <span class="state-pill">{{ isEditing ? "编辑中" : "自动保存中" }}</span>
+            <button v-if="!isEditing" class="edit-toggle-btn" @click="startEditing">编辑</button>
+            <template v-else>
+              <button class="edit-toggle-btn cancel" @click="cancelEditing">取消</button>
+              <button class="edit-toggle-btn save" @click="saveEditing" :disabled="isSaving">{{ isSaving ? "保存中..." : "保存" }}</button>
+            </template>
+          </div>
         </div>
 
-        <textarea v-model="recordText" />
+        <div class="transcript-content" v-if="transcriptData">
+          <div class="transcript-title">询 问 笔 录</div>
+
+          <section class="transcript-section">
+            <div class="transcript-info-row"><span>时    间：</span><strong>{{ transcriptData.header.record_time }}</strong></div>
+            <div class="transcript-info-row"><span>地    点：</span><strong>{{ transcriptData.header.record_location }}</strong></div>
+            <div class="transcript-info-row"><span>询 问 人：</span><strong>{{ transcriptData.header.interrogator }}</strong></div>
+            <div class="transcript-info-row"><span>记 录 人：</span><strong>{{ transcriptData.header.recorder }}</strong></div>
+            <div class="transcript-info-row"><span>案件名称：</span><strong>{{ transcriptData.header.case_name }}</strong></div>
+          </section>
+
+          <section class="transcript-section">
+            <h4>被询问人基本信息</h4>
+            <table class="transcript-table" :class="{ 'editable-table': isEditing }">
+              <tbody>
+                <tr>
+                  <td>姓名</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.姓名 }}</td>
+                  <td v-else><input v-model="editData.person_info.姓名" class="edit-input" /></td>
+                  <td>性别</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.性别 }}</td>
+                  <td v-else><input v-model="editData.person_info.性别" class="edit-input" /></td>
+                </tr>
+                <tr>
+                  <td>年龄</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.年龄 }}</td>
+                  <td v-else><input v-model="editData.person_info.年龄" class="edit-input" /></td>
+                  <td>出生日期</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.出生日期 }}</td>
+                  <td v-else><input v-model="editData.person_info.出生日期" class="edit-input" /></td>
+                </tr>
+                <tr>
+                  <td>身份证件号码</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.身份证件号码 }}</td>
+                  <td v-else><input v-model="editData.person_info.身份证件号码" class="edit-input" /></td>
+                  <td>是否为人大代表</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.是否为人大代表 }}</td>
+                  <td v-else><input v-model="editData.person_info.是否为人大代表" class="edit-input" /></td>
+                </tr>
+                <tr>
+                  <td>现住址</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.现住址 }}</td>
+                  <td v-else><input v-model="editData.person_info.现住址" class="edit-input" /></td>
+                  <td>联系方式</td>
+                  <td v-if="!isEditing">{{ transcriptData.person_info.联系方式 }}</td>
+                  <td v-else><input v-model="editData.person_info.联系方式" class="edit-input" /></td>
+                </tr>
+                <tr>
+                  <td>户籍所在地</td>
+                  <td v-if="!isEditing" colspan="3">{{ transcriptData.person_info.户籍所在地 }}</td>
+                  <td v-else colspan="3"><input v-model="editData.person_info.户籍所在地" class="edit-input" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="transcript-section">
+            <h4>案件要素摘要</h4>
+            <div class="case-info-list" v-if="!isEditing">
+              <div v-for="(value, key) in transcriptData.case_info" :key="key" class="case-info-item" v-show="value && value !== '未知'">
+                <span>【{{ key }}】</span>
+                <strong>{{ value }}</strong>
+              </div>
+            </div>
+            <div class="case-info-list editable" v-else>
+              <div v-for="(value, key) in editData.case_info" :key="key" class="case-info-item editable-item">
+                <span>【{{ key }}】</span>
+                <input v-model="editData.case_info[key]" class="edit-input" />
+              </div>
+            </div>
+          </section>
+
+          <section class="transcript-section">
+            <h4>询问过程</h4>
+            <div class="qa-record" v-if="!isEditing">
+              <div v-for="(pair, index) in transcriptData.qa_pairs" :key="index" class="qa-pair">
+                <p v-if="pair.question"><strong>问：</strong>{{ pair.question }}</p>
+                <p v-if="pair.answer"><strong>答：</strong>{{ pair.answer }}</p>
+              </div>
+            </div>
+            <div class="qa-record editable" v-else>
+              <div v-for="(pair, index) in editData.qa_pairs" :key="index" class="qa-pair editable-qa">
+                <div class="qa-edit-row">
+                  <label>问：</label>
+                  <textarea v-model="pair.question" class="edit-textarea" rows="2"></textarea>
+                </div>
+                <div class="qa-edit-row">
+                  <label>答：</label>
+                  <textarea v-model="pair.answer" class="edit-textarea" rows="2"></textarea>
+                </div>
+                <button class="remove-qa-btn" @click="removeQaPair(index)" v-if="editData.qa_pairs.length > 1">删除此条</button>
+              </div>
+              <button class="add-qa-btn" @click="addQaPair">+ 添加问答</button>
+            </div>
+          </section>
+        </div>
+        <div class="transcript-content transcript-loading" v-else>
+          <p>正在加载笔录数据...</p>
+        </div>
 
         <div class="record-window-actions">
           <button class="soft-btn" @click="goHome">回到主页面</button>
@@ -42,6 +227,7 @@
           <button class="primary-btn" @click="showSaveModal = true">保存笔录</button>
           <button class="primary-btn" @click="print">打印笔录</button>
           <button class="primary-btn" @click="handleExportWord">导出Word</button>
+          <button class="primary-btn" @click="openSignatureManage">电子签名</button>
         </div>
       </section>
 
@@ -119,7 +305,7 @@
       </aside>
     </main>
 
-    <section class="analysis-panel panel">
+    <section v-if="!isRecordOnlyMode" class="analysis-panel panel">
       <div class="section-head compact">
         <div>
           <span class="section-kicker">AI 分析</span>
@@ -197,20 +383,26 @@
                   <td>{{ transcriptData.person_info.性别 }}</td>
                 </tr>
                 <tr>
-                  <td>民族</td>
-                  <td>{{ transcriptData.person_info.民族 }}</td>
+                  <td>年龄</td>
+                  <td>{{ transcriptData.person_info.年龄 }}</td>
                   <td>出生日期</td>
                   <td>{{ transcriptData.person_info.出生日期 }}</td>
                 </tr>
                 <tr>
-                  <td>身份证号</td>
-                  <td>{{ transcriptData.person_info.身份证号 }}</td>
+                  <td>身份证件号码</td>
+                  <td>{{ transcriptData.person_info.身份证件号码 }}</td>
+                  <td>是否为人大代表</td>
+                  <td>{{ transcriptData.person_info.是否为人大代表 }}</td>
+                </tr>
+                <tr>
+                  <td>现住址</td>
+                  <td>{{ transcriptData.person_info.现住址 }}</td>
                   <td>联系方式</td>
                   <td>{{ transcriptData.person_info.联系方式 }}</td>
                 </tr>
                 <tr>
-                  <td>住址</td>
-                  <td colspan="3">{{ transcriptData.person_info.住址 }}</td>
+                  <td>户籍所在地</td>
+                  <td colspan="3">{{ transcriptData.person_info.户籍所在地 }}</td>
                 </tr>
               </tbody>
             </table>
@@ -239,8 +431,6 @@
           <section class="transcript-section signature-section">
             <p>以上笔录我已看过（向我宣读过），和我说的相符。</p>
             <p>被询问人签名（捺手印）：________________</p>
-            <p>询问人签名：________________</p>
-            <p>记录人签名：________________</p>
           </section>
         </div>
 
@@ -254,28 +444,136 @@
         </div>
       </div>
     </div>
+
+    <!-- 签名弹窗 -->
+    <div v-if="showSignatureModal" class="modal-overlay" @click.self="showSignatureModal = false">
+      <div class="signature-modal">
+        <div class="modal-header">
+          <h3>{{ currentSignerType }}签名</h3>
+          <button class="close-btn" @click="showSignatureModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="signature-form">
+            <label>签名者姓名：</label>
+            <input
+              v-model="currentSignerName"
+              type="text"
+              placeholder="请输入签名者姓名"
+              class="signature-input"
+            />
+          </div>
+          <div class="signature-canvas-wrapper">
+            <canvas
+              ref="signatureCanvas"
+              class="signature-canvas"
+              @mousedown="startDrawing"
+              @mousemove="draw"
+              @mouseup="stopDrawing"
+              @mouseleave="stopDrawing"
+              @touchstart="startDrawing"
+              @touchmove="draw"
+              @touchend="stopDrawing"
+            ></canvas>
+          </div>
+          <p class="signature-tip">请在上方空白区域使用鼠标或触屏手写签名</p>
+        </div>
+        <div class="modal-footer">
+          <button class="cancel-btn" @click="clearSignature">清除签名</button>
+          <button class="confirm-btn" @click="submitCurrentSignature">确认签名</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 签名管理弹窗 -->
+    <div v-if="showSignatureManageModal" class="modal-overlay" @click.self="showSignatureManageModal = false">
+      <div class="signature-manage-modal">
+        <div class="modal-header">
+          <h3>电子签名管理</h3>
+          <button class="close-btn" @click="showSignatureManageModal = false">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="signature-status-list">
+            <div
+              v-for="(status, signerType) in signatureStatus"
+              :key="signerType"
+              class="signature-status-item"
+              :class="{ completed: status }"
+            >
+              <div class="signer-info">
+                <span class="signer-type">{{ signerType }}</span>
+                <span v-if="status" class="status-badge done">已签名</span>
+                <span v-else class="status-badge pending">待签名</span>
+              </div>
+              <button
+                v-if="!status"
+                class="primary-btn"
+                @click="openSignatureModal(signerType)"
+              >
+                去签名
+              </button>
+              <span v-else class="signed-name">
+                {{ signatures.find(s => s.signer_type === signerType)?.signer_name }}
+              </span>
+            </div>
+          </div>
+          <div class="signature-actions">
+            <button
+              class="primary-btn"
+              :disabled="!allSignaturesComplete"
+              @click="handleExportWord"
+            >
+              {{ allSignaturesComplete ? '导出带签名的Word文档' : '请完成所有签名后导出' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, computed, reactive } from "vue"
+import { ref, onMounted, onBeforeUnmount, computed, reactive, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { startRecord, chatWithAI, chatWithAudio, speechToText, getTranscript, exportRecordWord } from "@/api/record"
+import { startRecord, chatWithAI, chatWithAudio, speechToText, getTranscript, exportRecordWord, submitSignature, getSignatures, updateTranscript } from "@/api/record"
 
 const route = useRoute()
 const router = useRouter()
 
 const formData = reactive<Record<string, string>>({})
+const isRecordOnlyMode = computed(() => route.query.mode === "recording")
 
 const showSaveModal = ref(false)
 const showTranscriptModal = ref(false)
+const showSignatureModal = ref(false)
+const showSignatureManageModal = ref(false)
 const transcriptData = ref<any>(null)
+const recordText = ref("")
+
+// 编辑相关状态
+const isEditing = ref(false)
+const isSaving = ref(false)
+const editData = reactive<{
+  person_info: Record<string, string>
+  case_info: Record<string, string>
+  qa_pairs: Array<{ question: string; answer: string }>
+}>({
+  person_info: {},
+  case_info: {},
+  qa_pairs: []
+})
+
+// 签名相关状态
+const signatureCanvas = ref<HTMLCanvasElement | null>(null)
+const isDrawing = ref(false)
+const currentSignerType = ref("")
+const currentSignerName = ref("")
+const signatures = ref<Array<{ signer_type: string; signer_name: string; signed_at: string }>>([])
+const signatureStatus = reactive<Record<string, boolean>>({
+  "被询问人": false
+})
 if (route.query.form) {
   Object.assign(formData, JSON.parse(route.query.form as string))
 }
-
-const recordText = ref("")
-const respondentLabel = computed(() => formData.personType?.trim() || "被询问人")
 
 // 对话列表，存储AI和用户的交替消息
 const chatList = ref<Array<{ role: 'ai' | 'user', content: string }>>([])
@@ -323,80 +621,122 @@ const isAutoMode = ref(true)
 const isPaused = ref(false)
 const shouldProcessRecording = ref(true)
 const recordingMode = ref<'auto' | 'manual'>('manual')
-const voiceOptions = ref<SpeechSynthesisVoice[]>([])
-const selectedVoiceURI = ref(localStorage.getItem("ai_voice_uri") || "")
 
 const silenceThreshold = 0.018
 const silenceDurationMs = 1600
 const minRecordingMs = 900
 const maxRecordingMs = 30000
 
+// ✅ 准确的男声关键词（移除 tingting, yaoyao，补充常见的微软/苹果男声）
 const preferredMaleVoiceKeywords = [
-  "yunxi",
-  "yunjian",
-  "yunyang",
-  "kangkang",
-  "male",
+  "yunxi",    // 微软云希 (男)
+  "yunjian",  // 微软云健 (男)
+  "yunyang",  // 微软云扬 (男)
+  "yunze",    // 微软云泽 (男)
+  "kankan",   // 苹果 Kankan (男)
+  "male", 
   "男"
+]
+
+// ✅ 明确的女性语音黑名单（防止回退时选中女声）
+const femaleVoiceBlacklist = [
+  "xiaoxiao", // 微软晓晓
+  "yaoyao",   // 微软瑶瑶
+  "huihui",   // 微软慧慧
+  "tingting", // 苹果婷婷
+  "meijia",   // 苹果美佳
+  "zhiyu",    // 微软智语
+  "female",
+  "女",
+  "kangkang" 
 ]
 
 const isChineseVoice = (voice: SpeechSynthesisVoice) => voice.lang.toLowerCase().startsWith("zh")
 
+// 存储找到的男声
+let cachedMaleVoice: SpeechSynthesisVoice | null = null
+let voiceLoadPromise: Promise<SpeechSynthesisVoice | null> | null = null
+
 const findPreferredMaleVoice = (voices: SpeechSynthesisVoice[]) => {
-  return voices.find((voice) => {
+  // 1. 过滤出所有的中文语音
+  const chineseVoices = voices.filter(isChineseVoice)
+  console.log("🎤 可用的中文语音列表：", chineseVoices.map(v => v.name))
+
+  if (chineseVoices.length === 0) return null
+
+  // 2. 排除明确在黑名单里的女声
+  const potentialMaleVoices = chineseVoices.filter((voice) => {
     const voiceName = voice.name.toLowerCase()
-    return isChineseVoice(voice) && preferredMaleVoiceKeywords.some((keyword) => voiceName.includes(keyword))
+    return !femaleVoiceBlacklist.some(blackKey => voiceName.includes(blackKey))
   })
+
+  // 3. 优先在未被排除的语音中，寻找确切的男声关键词匹配
+  const exactMaleVoice = potentialMaleVoices.find((voice) => {
+    const voiceName = voice.name.toLowerCase()
+    return preferredMaleVoiceKeywords.some((keyword) => voiceName.includes(keyword))
+  })
+  
+  if (exactMaleVoice) {
+    console.log("🎯 找到精确男声：", exactMaleVoice.name)
+    return exactMaleVoice
+  }
+
+  // 4. 如果没有明确是男声的语音，尝试从剩下的非女声中挑选微软或谷歌的语音
+  const fallbackVoice = potentialMaleVoices.find((voice) => {
+    const voiceName = voice.name.toLowerCase()
+    return voiceName.includes("microsoft") || voiceName.includes("google")
+  })
+
+  if (fallbackVoice) {
+    console.log("⚠️ 未找到明确男声，使用备选非女声：", fallbackVoice.name)
+    return fallbackVoice
+  }
+
+  // 5. 最后的保底逻辑：
+  // 哪怕找不到男声，也尽量拿一个不是“知名女声”的语音。如果全都是知名女声，只能被迫返回第一个中文语音。
+  const finalVoice = potentialMaleVoices[0] || chineseVoices[0]
+  console.log("⚠️ 只能使用默认保底语音：", finalVoice.name)
+  return finalVoice
 }
 
-const loadVoiceOptions = () => {
-  if (!("speechSynthesis" in window)) return null
+const loadMaleVoiceAsync = (): Promise<SpeechSynthesisVoice | null> => {
+  if (!("speechSynthesis" in window)) return Promise.resolve(null)
 
   const voices = window.speechSynthesis.getVoices()
-  voiceOptions.value = voices
-
-  if (selectedVoiceURI.value && !voices.some((voice) => voice.voiceURI === selectedVoiceURI.value)) {
-    selectedVoiceURI.value = ""
-    localStorage.removeItem("ai_voice_uri")
+  if (voices.length > 0) {
+    cachedMaleVoice = findPreferredMaleVoice(voices)
+    return Promise.resolve(cachedMaleVoice)
   }
 
-  if (!selectedVoiceURI.value) {
-    const preferredVoice = findPreferredMaleVoice(voices)
-    if (preferredVoice) {
-      selectedVoiceURI.value = preferredVoice.voiceURI
-      localStorage.setItem("ai_voice_uri", preferredVoice.voiceURI)
+  // 如果语音列表还没加载，等待 voiceschanged 事件
+  if (voiceLoadPromise) return voiceLoadPromise
+
+  voiceLoadPromise = new Promise((resolve) => {
+    const handler = () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", handler)
+      const loadedVoices = window.speechSynthesis.getVoices()
+      cachedMaleVoice = findPreferredMaleVoice(loadedVoices)
+      voiceLoadPromise = null
+      resolve(cachedMaleVoice)
     }
-  }
-}
+    window.speechSynthesis.addEventListener("voiceschanged", handler)
 
-const saveSelectedVoice = () => {
-  if (selectedVoiceURI.value) {
-    localStorage.setItem("ai_voice_uri", selectedVoiceURI.value)
-  } else {
-    localStorage.removeItem("ai_voice_uri")
-  }
-}
+    // 超时处理
+    setTimeout(() => {
+      window.speechSynthesis.removeEventListener("voiceschanged", handler)
+      voiceLoadPromise = null
+      resolve(null)
+    }, 3000)
+  })
 
-const getAiVoice = () => {
-  if (!("speechSynthesis" in window)) return null
-
-  const voices = voiceOptions.value.length > 0 ? voiceOptions.value : window.speechSynthesis.getVoices()
-  const selectedVoice = voices.find((voice) => voice.voiceURI === selectedVoiceURI.value)
-  if (selectedVoice) return selectedVoice
-
-  return (
-    findPreferredMaleVoice(voices) ||
-    voices.find((voice) => voice.lang.toLowerCase() === "zh-cn") ||
-    voices.find(isChineseVoice) ||
-    null
-  )
+  return voiceLoadPromise
 }
 
 const shouldContinueAutoConversation = (status?: string) => {
   return isAutoMode.value && !isPaused.value && status !== "笔录结束" && status !== "人工干预"
 }
 
-const speakAiQuestion = (text?: string, nextStatus?: string) => {
+const speakAiQuestion = async (text?: string, nextStatus?: string) => {
   if (!text?.trim()) return
   if (!("speechSynthesis" in window)) {
     if (shouldContinueAutoConversation(nextStatus)) {
@@ -408,14 +748,20 @@ const speakAiQuestion = (text?: string, nextStatus?: string) => {
   window.speechSynthesis.cancel()
   isAiSpeaking.value = true
 
+  // 异步加载语音，确保语音列表已准备好
+  const voice = await loadMaleVoiceAsync()
+
   const utterance = new SpeechSynthesisUtterance(text)
   utterance.lang = "zh-CN"
-  utterance.rate = 1
-  utterance.pitch = 1
+  utterance.rate = 0.9  // 稍慢一点，更稳重
+  utterance.pitch = 0.75  // 进一步降低音调，更像男声
 
-  const voice = getAiVoice()
   if (voice) {
     utterance.voice = voice
+    utterance.lang = voice.lang || "zh-CN"
+    console.log("🎯 实际使用的语音：", voice.name, "语言：", voice.lang)
+  } else {
+    console.warn("⚠️ 未找到合适的中文语音，使用默认语音")
   }
 
   utterance.onend = () => {
@@ -425,11 +771,17 @@ const speakAiQuestion = (text?: string, nextStatus?: string) => {
     }
   }
 
-  utterance.onerror = () => {
+  utterance.onerror = (event) => {
+    console.error("语音合成错误：", event.error)
     isAiSpeaking.value = false
   }
 
-  window.speechSynthesis.speak(utterance)
+  // 使用较长的延迟确保语音设置生效
+  setTimeout(() => {
+    // Chrome 浏览器的一个 bug：需要在 speak 之前先 resume
+    window.speechSynthesis.resume()
+    window.speechSynthesis.speak(utterance)
+  }, 100)
 }
 
 const stopAiSpeech = () => {
@@ -455,7 +807,8 @@ const initRecord = async () => {
       role: 'ai',
       content: response.data.ai_reply
     })
-    recordText.value += `\nAI警官：${response.data.ai_reply}`
+    // 初始化后获取笔录数据
+    fetchTranscript()
     speakAiQuestion(response.data.ai_reply, response.data.status)
   } catch (error) {
     console.error("初始化笔录失败:", error)
@@ -658,7 +1011,16 @@ const transcribeAudio = async (audioFile: File) => {
   try {
     isProcessing.value = true
     const response: any = await speechToText(audioFile)
-    reporterInput.value = response.text
+    const transcript = (response?.text || response?.data?.text || response?.transcript || "").trim()
+    if (isRecordOnlyMode.value) {
+      if (transcript) {
+        recordText.value = recordText.value
+          ? `${recordText.value.trimEnd()}\n${transcript}`
+          : transcript
+      }
+      return
+    }
+    reporterInput.value = transcript
   } catch (error) {
     console.error("语音识别失败:", error)
   } finally {
@@ -670,16 +1032,30 @@ const updateAnalysis = (extractedInfo: Record<string, string>) => {
   analysis.value = `案情：${extractedInfo.案情 || '未提供'}\n发生时间：${extractedInfo['发生时间'] || '未提供'}\n发生地点：${extractedInfo['发生地点'] || '未提供'}\n相关人员信息：${extractedInfo['相关人员信息'] || '未提供'}`
 }
 
+// 获取格式化笔录数据
+const fetchTranscript = async () => {
+  if (!recordId.value) return
+
+  try {
+    const response: any = await getTranscript(recordId.value)
+    transcriptData.value = response.data
+  } catch (error) {
+    console.error("获取笔录数据失败:", error)
+  }
+}
+
 const appendAiResponse = (response: any) => {
   chatList.value.push({
     role: 'ai',
     content: response.ai_reply
   })
-  recordText.value += `\nAI警官：${response.ai_reply}`
 
   if (response.extracted_info) {
     updateAnalysis(response.extracted_info)
   }
+
+  // 刷新笔录数据
+  fetchTranscript()
 
   speakAiQuestion(response.ai_reply, response.status)
 }
@@ -702,7 +1078,6 @@ const sendAudioMessage = async (audioFile: File) => {
       role: 'user',
       content: transcript
     })
-    recordText.value += `\n${respondentLabel.value}：${transcript}`
     reporterInput.value = ""
 
     appendAiResponse(response)
@@ -724,7 +1099,6 @@ const sendMessage = async () => {
     role: 'user',
     content: messageText
   })
-  recordText.value += `\n${respondentLabel.value}：${messageText}`
 
   try {
     isProcessing.value = true
@@ -746,18 +1120,31 @@ const sendMessage = async () => {
 
 // 生命周期钩子，组件挂载时初始化笔录
 onMounted(() => {
+  // 预加载语音列表
   if ("speechSynthesis" in window) {
-    loadVoiceOptions()
-    window.speechSynthesis.addEventListener("voiceschanged", loadVoiceOptions)
+    // 某些浏览器需要等待 voiceschanged 事件
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0) {
+        cachedMaleVoice = findPreferredMaleVoice(voices)
+        console.log("语音列表已加载，共", voices.length, "个语音")
+        console.log("选择的男声：", cachedMaleVoice?.name || "未找到")
+      }
+    }
+
+    // 立即尝试加载
+    loadVoices()
+
+    // 监听语音列表变化（某些浏览器异步加载）
+    window.speechSynthesis.addEventListener("voiceschanged", loadVoices)
   }
 
-  initRecord()
+  if (!isRecordOnlyMode.value) {
+    initRecord()
+  }
 })
 
 onBeforeUnmount(() => {
-  if ("speechSynthesis" in window) {
-    window.speechSynthesis.removeEventListener("voiceschanged", loadVoiceOptions)
-  }
   stopRecording(false)
   cleanupRecordingResources()
   stopAiSpeech()
@@ -784,6 +1171,244 @@ const resume = () => {
 }
 const print = () => openTranscriptPreview()
 const finish = () => console.log("结束")
+
+// ========== 签名相关功能 ==========
+
+// 初始化签名画布
+const initSignatureCanvas = () => {
+  nextTick(() => {
+    if (!signatureCanvas.value) return
+    const canvas = signatureCanvas.value
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    // 设置画布尺寸
+    const rect = canvas.parentElement?.getBoundingClientRect()
+    canvas.width = rect?.width || 400
+    canvas.height = 200
+
+    // 设置画笔样式
+    ctx.strokeStyle = "#1d6fd8"
+    ctx.lineWidth = 2
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+
+    // 清空画布
+    ctx.fillStyle = "#fff"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+  })
+}
+
+// 获取画布坐标
+const getCanvasCoords = (e: MouseEvent | TouchEvent) => {
+  if (!signatureCanvas.value) return { x: 0, y: 0 }
+  const canvas = signatureCanvas.value
+  const rect = canvas.getBoundingClientRect()
+
+  let clientX: number, clientY: number
+  if ("touches" in e) {
+    clientX = e.touches[0].clientX
+    clientY = e.touches[0].clientY
+  } else {
+    clientX = e.clientX
+    clientY = e.clientY
+  }
+
+  return {
+    x: clientX - rect.left,
+    y: clientY - rect.top
+  }
+}
+
+// 开始绘制
+const startDrawing = (e: MouseEvent | TouchEvent) => {
+  e.preventDefault()
+  isDrawing.value = true
+  const canvas = signatureCanvas.value
+  const ctx = canvas?.getContext("2d")
+  if (!ctx || !canvas) return
+
+  const { x, y } = getCanvasCoords(e)
+  ctx.beginPath()
+  ctx.moveTo(x, y)
+}
+
+// 绘制中
+const draw = (e: MouseEvent | TouchEvent) => {
+  if (!isDrawing.value) return
+  e.preventDefault()
+  const canvas = signatureCanvas.value
+  const ctx = canvas?.getContext("2d")
+  if (!ctx || !canvas) return
+
+  const { x, y } = getCanvasCoords(e)
+  ctx.lineTo(x, y)
+  ctx.stroke()
+}
+
+// 结束绘制
+const stopDrawing = () => {
+  isDrawing.value = false
+}
+
+// 清空签名
+const clearSignature = () => {
+  const canvas = signatureCanvas.value
+  const ctx = canvas?.getContext("2d")
+  if (!ctx || !canvas) return
+
+  ctx.fillStyle = "#fff"
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+}
+
+// 获取签名Base64数据
+const getSignatureBase64 = () => {
+  if (!signatureCanvas.value) return ""
+  return signatureCanvas.value.toDataURL("image/png").split(",")[1]
+}
+
+// 打开签名弹窗
+const openSignatureModal = async (signerType: string) => {
+  currentSignerType.value = signerType
+
+  // 根据签名类型设置默认姓名
+  if (signerType === "被询问人") {
+    currentSignerName.value = formData.personName || ""
+  } else {
+    currentSignerName.value = ""
+  }
+
+  showSignatureModal.value = true
+
+  // 等待DOM更新后初始化画布
+  await nextTick()
+  initSignatureCanvas()
+}
+
+// 提交签名
+const submitCurrentSignature = async () => {
+  if (!recordId.value) {
+    alert("笔录尚未初始化，无法签名")
+    return
+  }
+
+  if (!currentSignerName.value.trim()) {
+    alert("请输入签名者姓名")
+    return
+  }
+
+  const signatureData = getSignatureBase64()
+  if (!signatureData) {
+    alert("请先完成签名")
+    return
+  }
+
+  try {
+    await submitSignature({
+      record_id: recordId.value,
+      signer_type: currentSignerType.value,
+      signer_name: currentSignerName.value.trim(),
+      signature_data: signatureData
+    })
+
+    // 更新签名状态
+    signatureStatus[currentSignerType.value] = true
+
+    // 刷新签名列表
+    await fetchSignatures()
+
+    showSignatureModal.value = false
+    alert(`${currentSignerType.value}签名成功！`)
+  } catch (error: any) {
+    console.error("签名提交失败:", error)
+    alert(error.response?.data?.detail || "签名提交失败，请重试")
+  }
+}
+
+// 获取签名列表
+const fetchSignatures = async () => {
+  if (!recordId.value) return
+
+  try {
+    const response: any = await getSignatures(recordId.value)
+    signatures.value = response.data?.signatures || []
+
+    // 更新签名状态
+    signatures.value.forEach(sig => {
+      signatureStatus[sig.signer_type] = true
+    })
+  } catch (error) {
+    console.error("获取签名列表失败:", error)
+  }
+}
+
+// 检查是否所有签名已完成
+const allSignaturesComplete = computed(() => {
+  return signatureStatus["被询问人"]
+})
+
+// 打开签名管理弹窗
+const openSignatureManage = async () => {
+  await fetchSignatures()
+  showSignatureManageModal.value = true
+}
+
+// ========== 编辑相关功能 ==========
+
+// 开始编辑
+const startEditing = () => {
+  if (!transcriptData.value) return
+
+  // 复制当前数据到编辑数据
+  editData.person_info = { ...transcriptData.value.person_info }
+  editData.case_info = { ...transcriptData.value.case_info }
+  editData.qa_pairs = transcriptData.value.qa_pairs.map((pair: any) => ({ ...pair }))
+
+  isEditing.value = true
+}
+
+// 取消编辑
+const cancelEditing = () => {
+  isEditing.value = false
+  editData.person_info = {}
+  editData.case_info = {}
+  editData.qa_pairs = []
+}
+
+// 保存编辑
+const saveEditing = async () => {
+  if (!recordId.value) return
+
+  isSaving.value = true
+  try {
+    const response: any = await updateTranscript(recordId.value, {
+      person_info: editData.person_info,
+      case_info: editData.case_info,
+      qa_pairs: editData.qa_pairs
+    })
+
+    // 更新显示数据
+    transcriptData.value = response.data
+
+    isEditing.value = false
+    alert("笔录保存成功！")
+  } catch (error: any) {
+    console.error("保存笔录失败:", error)
+    alert(error.response?.data?.detail || "保存失败，请重试")
+  } finally {
+    isSaving.value = false
+  }
+}
+
+// 添加问答对
+const addQaPair = () => {
+  editData.qa_pairs.push({ question: "", answer: "" })
+}
+
+// 删除问答对
+const removeQaPair = (index: number) => {
+  editData.qa_pairs.splice(index, 1)
+}
 </script>
 
 <style scoped>
@@ -846,32 +1471,6 @@ const finish = () => console.log("结束")
   border-top: 1px solid rgba(114, 136, 177, 0.14);
 }
 
-.voice-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 220px;
-  color: var(--text-soft);
-  font-size: 13px;
-}
-
-.voice-control select {
-  height: 46px;
-  min-width: 170px;
-  max-width: 260px;
-  border: 1px solid rgba(114, 136, 177, 0.18);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text-main);
-  padding: 0 12px;
-}
-
-.voice-control select:focus {
-  outline: none;
-  border-color: rgba(29, 111, 216, 0.5);
-  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
-}
-
 .soft-btn,
 .primary-btn {
   height: 46px;
@@ -894,6 +1493,86 @@ const finish = () => console.log("结束")
   grid-template-columns: minmax(0, 1.2fr) 420px;
   gap: 20px;
   margin-top: 20px;
+}
+
+.record-only-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  margin-top: 20px;
+  align-items: start;
+}
+
+.record-only-editor {
+  min-height: calc(100vh - 190px);
+}
+
+.record-context-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.record-context-grid div {
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(114, 136, 177, 0.14);
+}
+
+.record-context-grid span {
+  display: block;
+  color: var(--text-faint);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.record-context-grid strong {
+  display: block;
+  color: var(--text-main);
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.record-textarea {
+  width: 100%;
+  min-height: calc(100vh - 360px);
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(114, 136, 177, 0.18);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  line-height: 1.9;
+  resize: vertical;
+}
+
+.record-textarea:focus {
+  outline: none;
+  border-color: rgba(29, 111, 216, 0.5);
+  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+}
+
+.record-only-side {
+  position: sticky;
+  top: 20px;
+}
+
+.recording-card {
+  padding: 24px;
+}
+
+.record-only-record-btn {
+  width: 100%;
+  height: 64px;
+  font-size: 16px;
+}
+
+.recording-status {
+  margin: 14px 0 0;
+  color: var(--text-soft);
+  line-height: 1.7;
 }
 
 .record-editor,
@@ -944,7 +1623,7 @@ const finish = () => console.log("结束")
   font-size: 12px;
 }
 
-.record-editor textarea {
+.transcript-content {
   width: 100%;
   min-height: 560px;
   padding: 22px;
@@ -953,12 +1632,96 @@ const finish = () => console.log("结束")
   background: rgba(255, 255, 255, 0.96);
   color: var(--text-main);
   line-height: 1.8;
+  overflow-y: auto;
 }
 
-.record-editor textarea:focus {
-  outline: none;
-  border-color: rgba(29, 111, 216, 0.5);
-  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+.transcript-content.transcript-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transcript-content.transcript-loading p {
+  color: var(--text-soft);
+}
+
+.transcript-title {
+  text-align: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 24px;
+}
+
+.transcript-section {
+  margin-bottom: 22px;
+}
+
+.transcript-section h4 {
+  margin: 0 0 12px;
+  color: var(--text-main);
+}
+
+.transcript-info-row,
+.case-info-item {
+  display: flex;
+  gap: 12px;
+  line-height: 1.8;
+}
+
+.transcript-info-row span,
+.case-info-item span {
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+
+.transcript-info-row strong,
+.case-info-item strong {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.transcript-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.transcript-table td {
+  border: 1px solid rgba(114, 136, 177, 0.22);
+  padding: 10px 12px;
+  color: var(--text-main);
+  word-break: break-word;
+}
+
+.transcript-table td:nth-child(odd) {
+  width: 120px;
+  background: rgba(29, 111, 216, 0.06);
+  color: var(--text-soft);
+  font-weight: 600;
+}
+
+.case-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qa-record {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.qa-pair {
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(114, 136, 177, 0.12);
+}
+
+.qa-pair p {
+  margin: 0 0 8px;
+  line-height: 1.8;
+  color: var(--text-main);
 }
 
 .record-side {
@@ -1341,12 +2104,17 @@ const finish = () => console.log("结束")
 
 @media (max-width: 1100px) {
   .record-layout,
+  .record-only-layout,
   .analysis-grid {
     grid-template-columns: 1fr;
   }
 
   .record-top {
     flex-direction: column;
+  }
+
+  .record-only-side {
+    position: static;
   }
 }
 
@@ -1362,6 +2130,10 @@ const finish = () => console.log("结束")
 
   .record-window-actions {
     justify-content: flex-start;
+  }
+
+  .record-context-grid {
+    grid-template-columns: 1fr;
   }
 
   .modal-header,
@@ -1385,6 +2157,283 @@ const finish = () => console.log("结束")
     flex: 1;
     max-width: none;
   }
+}
+
+/* 签名弹窗样式 */
+.signature-modal {
+  width: min(500px, 100%);
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.signature-manage-modal {
+  width: min(480px, 100%);
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.signature-form {
+  margin-bottom: 20px;
+}
+
+.signature-form label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-soft);
+  font-size: 14px;
+}
+
+.signature-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(114, 136, 177, 0.24);
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--text-main);
+  font-size: 15px;
+}
+
+.signature-input:focus {
+  outline: none;
+  border-color: rgba(29, 111, 216, 0.5);
+  box-shadow: 0 0 0 4px rgba(29, 111, 216, 0.12);
+}
+
+.signature-canvas-wrapper {
+  border: 2px dashed rgba(29, 111, 216, 0.3);
+  border-radius: 12px;
+  background: #fafbfc;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.signature-canvas {
+  display: block;
+  width: 100%;
+  height: 200px;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.signature-tip {
+  color: var(--text-faint);
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+}
+
+.signature-status-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.signature-status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(114, 136, 177, 0.14);
+  transition: all 0.2s ease;
+}
+
+.signature-status-item.completed {
+  background: rgba(17, 166, 161, 0.08);
+  border-color: rgba(17, 166, 161, 0.24);
+}
+
+.signer-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.signer-type {
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.status-badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.status-badge.done {
+  background: rgba(17, 166, 161, 0.15);
+  color: var(--accent);
+}
+
+.status-badge.pending {
+  background: rgba(255, 193, 7, 0.15);
+  color: #d4a000;
+}
+
+.signed-name {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.signature-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.signature-actions .primary-btn {
+  min-width: 200px;
+}
+
+.signature-actions .primary-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 编辑功能样式 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-toggle-btn {
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid rgba(29, 111, 216, 0.3);
+  background: rgba(29, 111, 216, 0.08);
+  color: var(--brand);
+}
+
+.edit-toggle-btn:hover {
+  background: rgba(29, 111, 216, 0.15);
+}
+
+.edit-toggle-btn.cancel {
+  background: rgba(220, 53, 69, 0.08);
+  border-color: rgba(220, 53, 69, 0.3);
+  color: #dc3545;
+}
+
+.edit-toggle-btn.save {
+  background: rgba(17, 166, 161, 0.08);
+  border-color: rgba(17, 166, 161, 0.3);
+  color: var(--accent);
+}
+
+.edit-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(29, 111, 216, 0.3);
+  background: #fff;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.case-info-list.editable {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.editable-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(114, 136, 177, 0.14);
+}
+
+.editable-item span {
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.editable-item .edit-input {
+  flex: 1;
+}
+
+.qa-record.editable {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.editable-qa {
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(114, 136, 177, 0.14);
+}
+
+.qa-edit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.qa-edit-row label {
+  flex-shrink: 0;
+  min-width: 36px;
+  padding-top: 8px;
+  font-weight: 600;
+}
+
+.edit-textarea {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(29, 111, 216, 0.3);
+  background: #fff;
+  color: var(--text-main);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 50px;
+  font-family: inherit;
+}
+
+.edit-textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+}
+
+.remove-qa-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(220, 53, 69, 0.08);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.2);
+  cursor: pointer;
+}
+
+.add-qa-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: rgba(29, 111, 216, 0.08);
+  color: var(--brand);
+  border: 1px dashed rgba(29, 111, 216, 0.3);
+  cursor: pointer;
+  width: 100%;
 }
 
 </style>

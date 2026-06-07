@@ -39,3 +39,13 @@ class RecordCreateInfo(SQLModel, table=True):
     id_type: str = Field(default="", description="证件类型")
     id_number: str = Field(default="", description="证件号码")
     created_at: datetime = Field(default_factory=datetime.now, description="创建时间")
+
+
+# 4. 电子签名表 (Signature)
+class Signature(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    record_id: int = Field(index=True, description="关联的笔录ID")
+    signer_type: str = Field(description="签名者类型：被询问人/询问人/记录人")
+    signer_name: str = Field(description="签名者姓名")
+    signature_data: str = Field(description="签名图片Base64数据（PNG格式）")
+    signed_at: datetime = Field(default_factory=datetime.now, description="签名时间")
